@@ -1,0 +1,748 @@
+{
+  "framework_api": "AgentTree.run(Task)",
+  "metric_definitions": {
+    "capability_based_routing": "PASS per scenario when selected Manager and executed Specialist names exactly equal expected names and unrelated registered agents are absent.",
+    "extensibility": "PASS when a newly configured ManagerAgent, SpecialistAgent, and capability register and produce a completed execution using only public APIs.",
+    "provider_independence": "PASS per scenario when equivalent primary and alternate MockProvider bindings produce equal final status, success, and normalized outputs.",
+    "reusability": "PASS when all domain configurations live outside src/agenttree, use AgentTree.run(Task), and complete through SequentialOrchestrationBackend without domain-specific core changes.",
+    "traceability": "PASS per scenario when the final trace belongs to the Task, every event uses that Task ID, and required major phase labels occur in order."
+  },
+  "overall": {
+    "all_scenarios": {
+      "passed": 6,
+      "status": "PASS",
+      "total": 6
+    },
+    "capability_based_routing": {
+      "scenarios_passed": 6,
+      "scenarios_total": 6,
+      "status": "PASS"
+    },
+    "extensibility": {
+      "executed_specialists": [
+        "New Application Specialist"
+      ],
+      "final_status": "completed",
+      "manager": "New Application Manager",
+      "new_capability": "new_application_synthesis",
+      "specialist": "New Application Specialist",
+      "status": "PASS"
+    },
+    "langgraph_equivalence": {
+      "available": true,
+      "final_status": "completed",
+      "scenario_id": "it-incident-review",
+      "status": "PASS",
+      "trace_event_count": 24
+    },
+    "provider_independence": {
+      "scenarios_passed": 6,
+      "scenarios_total": 6,
+      "status": "PASS"
+    },
+    "reusability": {
+      "core_source_files_modified_per_domain": {
+        "Business / Product": 0,
+        "HR / Document": 0,
+        "IT / Technical": 0
+      },
+      "customization_paths": [
+        "examples/domains/it_technical.py",
+        "examples/domains/hr_document.py",
+        "examples/domains/business_product.py"
+      ],
+      "customization_paths_outside_core": true,
+      "orchestration_backend": "SequentialOrchestrationBackend",
+      "public_api": "AgentTree.run(Task)",
+      "status": "PASS"
+    },
+    "tool_integration": {
+      "scenarios_with_tool_proof": 2,
+      "status": "PASS"
+    },
+    "traceability": {
+      "scenarios_passed": 6,
+      "scenarios_total": 6,
+      "status": "PASS"
+    }
+  },
+  "scenarios": [
+    {
+      "domain": "IT / Technical",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "it-specialist-1",
+          "it-specialist-2"
+        ],
+        "executed_specialists": [
+          "Network Specialist",
+          "Log Specialist"
+        ],
+        "expected_manager_ids": [
+          "it-manager"
+        ],
+        "expected_managers": [
+          "IT Incident Manager"
+        ],
+        "expected_specialist_ids": [
+          "it-specialist-1",
+          "it-specialist-2"
+        ],
+        "expected_specialists": [
+          "Network Specialist",
+          "Log Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Network path is stable in the synthetic evidence.",
+          "Synthetic logs indicate a bounded worker saturation event."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Log Specialist": "it-alternate-provider-2",
+            "Network Specialist": "it-alternate-provider-1"
+          },
+          "primary": {
+            "Log Specialist": "it-primary-provider-2",
+            "Network Specialist": "it-primary-provider-1"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "it-alternate-provider-1",
+            "it-alternate-provider-2"
+          ],
+          "primary": [
+            "it-primary-provider-1",
+            "it-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "it-manager"
+        ],
+        "selected_managers": [
+          "IT Incident Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": true,
+          "output": {
+            "signal_count": 2
+          },
+          "success": true,
+          "trace_event_count": 2
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-it-incident-review"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "it-incident-review",
+      "status": "PASS",
+      "traceability_passed": true
+    },
+    {
+      "domain": "IT / Technical",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "it-specialist-1",
+          "it-specialist-2"
+        ],
+        "executed_specialists": [
+          "Network Specialist",
+          "Log Specialist"
+        ],
+        "expected_manager_ids": [
+          "it-manager"
+        ],
+        "expected_managers": [
+          "IT Incident Manager"
+        ],
+        "expected_specialist_ids": [
+          "it-specialist-1",
+          "it-specialist-2"
+        ],
+        "expected_specialists": [
+          "Network Specialist",
+          "Log Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Network path is stable in the synthetic evidence.",
+          "Synthetic logs indicate a bounded worker saturation event."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Log Specialist": "it-alternate-provider-2",
+            "Network Specialist": "it-alternate-provider-1"
+          },
+          "primary": {
+            "Log Specialist": "it-primary-provider-2",
+            "Network Specialist": "it-primary-provider-1"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "it-alternate-provider-1",
+            "it-alternate-provider-2"
+          ],
+          "primary": [
+            "it-primary-provider-1",
+            "it-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "it-manager"
+        ],
+        "selected_managers": [
+          "IT Incident Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": true,
+          "output": {
+            "signal_count": 2
+          },
+          "success": true,
+          "trace_event_count": 2
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-it-follow-up-review"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "it-follow-up-review",
+      "status": "PASS",
+      "traceability_passed": true
+    },
+    {
+      "domain": "HR / Document",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "hr-specialist-1",
+          "hr-specialist-2"
+        ],
+        "executed_specialists": [
+          "Document Specialist",
+          "Qualification Specialist"
+        ],
+        "expected_manager_ids": [
+          "hr-manager"
+        ],
+        "expected_managers": [
+          "Document Review Manager"
+        ],
+        "expected_specialist_ids": [
+          "hr-specialist-1",
+          "hr-specialist-2"
+        ],
+        "expected_specialists": [
+          "Document Specialist",
+          "Qualification Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Synthetic documents are complete and internally consistent.",
+          "Synthetic qualifications match the stated criteria."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Document Specialist": "hr-alternate-provider-1",
+            "Qualification Specialist": "hr-alternate-provider-2"
+          },
+          "primary": {
+            "Document Specialist": "hr-primary-provider-1",
+            "Qualification Specialist": "hr-primary-provider-2"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "hr-alternate-provider-1",
+            "hr-alternate-provider-2"
+          ],
+          "primary": [
+            "hr-primary-provider-1",
+            "hr-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "hr-manager"
+        ],
+        "selected_managers": [
+          "Document Review Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": false
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-hr-application-summary"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "hr-application-summary",
+      "status": "PASS",
+      "traceability_passed": true
+    },
+    {
+      "domain": "HR / Document",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "hr-specialist-1",
+          "hr-specialist-2"
+        ],
+        "executed_specialists": [
+          "Document Specialist",
+          "Qualification Specialist"
+        ],
+        "expected_manager_ids": [
+          "hr-manager"
+        ],
+        "expected_managers": [
+          "Document Review Manager"
+        ],
+        "expected_specialist_ids": [
+          "hr-specialist-1",
+          "hr-specialist-2"
+        ],
+        "expected_specialists": [
+          "Document Specialist",
+          "Qualification Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Synthetic documents are complete and internally consistent.",
+          "Synthetic qualifications match the stated criteria."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Document Specialist": "hr-alternate-provider-1",
+            "Qualification Specialist": "hr-alternate-provider-2"
+          },
+          "primary": {
+            "Document Specialist": "hr-primary-provider-1",
+            "Qualification Specialist": "hr-primary-provider-2"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "hr-alternate-provider-1",
+            "hr-alternate-provider-2"
+          ],
+          "primary": [
+            "hr-primary-provider-1",
+            "hr-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "hr-manager"
+        ],
+        "selected_managers": [
+          "Document Review Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": false
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-hr-criteria-review"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "hr-criteria-review",
+      "status": "PASS",
+      "traceability_passed": true
+    },
+    {
+      "domain": "Business / Product",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "product-specialist-1",
+          "product-specialist-2"
+        ],
+        "executed_specialists": [
+          "Market Specialist",
+          "Product Specialist"
+        ],
+        "expected_manager_ids": [
+          "product-manager"
+        ],
+        "expected_managers": [
+          "Product Evaluation Manager"
+        ],
+        "expected_specialist_ids": [
+          "product-specialist-1",
+          "product-specialist-2"
+        ],
+        "expected_specialists": [
+          "Market Specialist",
+          "Product Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Synthetic research shows a focused early-adopter segment.",
+          "A small validation experiment is the recommended next step."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Market Specialist": "product-alternate-provider-1",
+            "Product Specialist": "product-alternate-provider-2"
+          },
+          "primary": {
+            "Market Specialist": "product-primary-provider-1",
+            "Product Specialist": "product-primary-provider-2"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "product-alternate-provider-1",
+            "product-alternate-provider-2"
+          ],
+          "primary": [
+            "product-primary-provider-1",
+            "product-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "product-manager"
+        ],
+        "selected_managers": [
+          "Product Evaluation Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": false
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-product-idea-review"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "product-idea-review",
+      "status": "PASS",
+      "traceability_passed": true
+    },
+    {
+      "domain": "Business / Product",
+      "final_status": "completed",
+      "metrics": {
+        "executed_specialist_ids": [
+          "product-specialist-1",
+          "product-specialist-2"
+        ],
+        "executed_specialists": [
+          "Market Specialist",
+          "Product Specialist"
+        ],
+        "expected_manager_ids": [
+          "product-manager"
+        ],
+        "expected_managers": [
+          "Product Evaluation Manager"
+        ],
+        "expected_specialist_ids": [
+          "product-specialist-1",
+          "product-specialist-2"
+        ],
+        "expected_specialists": [
+          "Market Specialist",
+          "Product Specialist"
+        ],
+        "final_result_shape": [
+          "content",
+          "final_review",
+          "final_reviews",
+          "manager_results",
+          "metadata",
+          "revision_count",
+          "revisions",
+          "root_agent_id",
+          "status",
+          "success",
+          "task_id",
+          "trace"
+        ],
+        "normalized_outputs": [
+          "Synthetic research shows a focused early-adopter segment.",
+          "A small validation experiment is the recommended next step."
+        ],
+        "provider_assignments": {
+          "alternate": {
+            "Market Specialist": "product-alternate-provider-1",
+            "Product Specialist": "product-alternate-provider-2"
+          },
+          "primary": {
+            "Market Specialist": "product-primary-provider-1",
+            "Product Specialist": "product-primary-provider-2"
+          }
+        },
+        "provider_variants": {
+          "alternate": [
+            "product-alternate-provider-1",
+            "product-alternate-provider-2"
+          ],
+          "primary": [
+            "product-primary-provider-1",
+            "product-primary-provider-2"
+          ]
+        },
+        "selected_manager_ids": [
+          "product-manager"
+        ],
+        "selected_managers": [
+          "Product Evaluation Manager"
+        ],
+        "task_input_unchanged": true,
+        "tool_proof": {
+          "configured": false
+        },
+        "trace": {
+          "event_count": 24,
+          "required_event_positions": [
+            0,
+            1,
+            3,
+            4,
+            11,
+            12,
+            16,
+            21,
+            23
+          ],
+          "required_events": [
+            "orchestration.started",
+            "orchestration.triage_completed",
+            "orchestration.planning_completed",
+            "orchestration.manager_delegation_started",
+            "orchestration.specialist_execution_started",
+            "orchestration.specialist_execution_completed",
+            "orchestration.manager_review_started",
+            "orchestration.final_review_started",
+            "orchestration.final_result_created"
+          ],
+          "task_id": "task-product-experiment-review"
+        },
+        "unrelated_agents_selected": []
+      },
+      "notes": [
+        "Synthetic data; offline deterministic providers."
+      ],
+      "provider_independence_passed": true,
+      "routing_passed": true,
+      "scenario_id": "product-experiment-review",
+      "status": "PASS",
+      "traceability_passed": true
+    }
+  ],
+  "schema_version": "1.0"
+}
