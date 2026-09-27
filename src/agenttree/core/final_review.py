@@ -52,6 +52,7 @@ class ProviderFinalReviewer(_ProviderDecision, BaseFinalReviewer):
             "final_review", REVIEW_PROMPT,
             "Review overall task completion from the manager results as the Root.",
             {"task": context, "root": {
+                "id": root_agent.id,
                 "name": root_agent.name, "description": root_agent.description,
                 "capabilities": root_agent.capabilities,
             }, "manager_review_result": {

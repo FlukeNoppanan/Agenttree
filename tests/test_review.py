@@ -301,7 +301,7 @@ def test_failed_initial_execution_is_preserved_and_reviewable() -> None:
         executor=executor,
     )
     outcome = result.manager_results[0].subtask_outcomes[0]
-    assert outcome.status is ManagerReviewStatus.PASSED
+    assert outcome.status is ManagerReviewStatus.FAILED
     assert outcome.executions[0] is (
         execution.manager_executions[0].specialist_executions[0]
     )

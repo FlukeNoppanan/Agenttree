@@ -6,7 +6,7 @@ AgentTree คือเฟรมเวิร์ก Python 3.10+ สำหรั�
 Root -> Manager -> Specialist -> การตรวจทานโดย Manager -> การตรวจทานขั้นสุดท้ายโดย Root
 ```
 
-เวอร์ชัน **0.2.1** เป็นรุ่นอัลฟาก่อนเผยแพร่ที่แก้ไขข้อบกพร่อง สำหรับประเมินเฟรมเวิร์กและทดลองเชื่อมต่อในระยะแรก
+เวอร์ชัน **0.2.2** เป็นรุ่นอัลฟาก่อนเผยแพร่สำหรับประเมินเฟรมเวิร์กและทดลองเชื่อมต่อในระยะแรก
 
 ## คุณสมบัติเด่น
 
@@ -76,7 +76,8 @@ framework.bind_provider(specialist, provider)
 
 result = framework.run(Task(objective="Summarize the input"))
 print(result.status.value, result.success)
-print(result.content)
+print(result.final_output)  # user-facing Root answer
+print(result.orchestration)  # structured diagnostics (legacy: result.content)
 print(result.trace.event_count)
 ```
 
@@ -110,9 +111,13 @@ SDK ประกอบ registry, กลยุทธ์, executor, สถาน�
 
 ## เครื่องมือและ MCP
 
-`FunctionTool` และ `MCPTool` ใช้ `ToolRegistry`, `ToolBindingRegistry` และการเรียกผ่าน `ToolExecutor` อย่างชัดเจนร่วมกัน `MockMCPClient` รองรับการทดสอบออฟไลน์ ส่วน `StdioMCPClient` และ `StreamableHttpMCPClient` เป็น transport จริงที่เลือกใช้ได้ และ `MCPToolLoader` ใช้ค้นหาและปรับเครื่องมือจากเซิร์ฟเวอร์
+`FunctionTool` และ `MCPTool` ใช้ `ToolRegistry` และ `ToolBindingRegistry` ร่วมกัน สามารถผูกเครื่องมือกับ Root, Manager หรือ Specialist โดยแยกจาก provider binding ได้ `AgentTree.run()` เสนอเฉพาะเครื่องมือที่ผูกและเปิดใช้งานแก่โมเดล แล้วตรวจสิทธิ์และข้อจำกัดใน Python ก่อนเรียกเครื่องมือ `ToolExecutor` ยังรองรับการเรียกโดยแอปพลิเคชันอย่างชัดเจน `MockMCPClient` รองรับการทดสอบออฟไลน์ ส่วน `StdioMCPClient` และ `StreamableHttpMCPClient` เป็น transport จริงที่เลือกใช้ได้
 
-MCP ใช้เชื่อมต่อเครื่องมือและข้อมูล ไม่ใช่การสื่อสารระหว่างเอเจนต์ และ `run()` จะไม่วางแผนหรือเรียกเครื่องมือโดยอัตโนมัติ ดู [เครื่องมือและ MCP](docs/tools-and-mcp.md)
+MCP ใช้เชื่อมต่อเครื่องมือและข้อมูล ไม่ใช่การสื่อสารระหว่างเอเจนต์ โมเดลเป็นผู้ร้องขอการใช้เครื่องมือที่ได้รับมอบหมาย ส่วน runtime เป็นผู้ตรวจสิทธิ์ ดู [เครื่องมือและ MCP](docs/tools-and-mcp.md)
+
+## การประสานงานระหว่าง Manager
+
+Manager ที่ลงทะเบียนและถูกเลือกใน `run()` สามารถแลกเปลี่ยนข้อมูลผ่าน runtime เมื่อกำหนดสิทธิ์แบบมีทิศทางด้วย `allow_manager_communication(sender, peer)` เท่านั้น ค่าเริ่มต้นไม่มี peer ที่ได้รับอนุญาต การสื่อสารมีขีดจำกัดของข้อความ รอบ ขนาด และเวลา พร้อม trace และ metrics แยกจาก Tool และ token usage; Specialist ไม่สามารถติดต่อ peer โดยตรง ดู [Controlled Manager collaboration](docs/manager-collaboration.md)
 
 ## แบ็กเอนด์การประสานงาน
 
@@ -120,7 +125,11 @@ MCP ใช้เชื่อมต่อเครื่องมือและ�
 
 ## สถานะและ trace การทำงาน
 
-`framework.last_state` ส่งคืน snapshot ของ `WorkflowState` ล่าสุดในหน่วยความจำ `FinalResult.trace` เก็บเหตุการณ์ตามลำดับสำหรับการคัดแยก การวางแผน การมอบหมาย การทำงานของ Specialist การตรวจทานโดย Manager การตรวจทานขั้นสุดท้าย เครื่องมือเมื่อถูกเรียกอย่างชัดเจนด้วย trace นั้น และการสร้างผลลัพธ์ สถานะจะไม่ถูกบันทึกถาวร และอินสแตนซ์เฟรมเวิร์กหนึ่งตัวไม่รองรับการรันพร้อมกัน
+`framework.last_state` ส่งคืน snapshot ของ `WorkflowState` ล่าสุดในหน่วยความจำ `FinalResult.trace` เก็บเหตุการณ์ตามลำดับสำหรับการคัดแยก การวางแผน การมอบหมาย การทำงานของ Specialist การตรวจทานโดย Manager การตรวจทานขั้นสุดท้าย เครื่องมือเมื่อถูกเรียกอย่างชัดเจนด้วย trace นั้น และการสร้างผลลัพธ์ `AgentTree.run()` ไม่บันทึกสถานะถาวรโดยค่าเริ่มต้น และอินสแตนซ์เฟรมเวิร์กหนึ่งตัวไม่รองรับการรันพร้อมกัน
+
+## รันงานเบื้องหลังและกู้คืน
+
+`ExecutionRuntime` รัน Tree ผ่าน worker ที่มีจำนวนจำกัดและบันทึก checkpoint หลังแต่ละเฟส ใช้ `InMemoryExecutionStore` สำหรับการใช้งานชั่วคราว หรือ `SQLiteExecutionStore` เพื่อเก็บผลลัพธ์และกู้คืนหลัง process restart คำสั่ง `tree.start(task, runtime=runtime)` ส่งคืน handle สำหรับดูสถานะ ยกเลิก รับผลลัพธ์ และอ่านเหตุการณ์ตามลำดับ ส่วน `tree.run(task)` ยังทำงานแบบซิงโครนัสเหมือนเดิม การกู้คืนต้องเรียกอย่างชัดเจนด้วย Tree ที่ประกอบกลับและมี fingerprint ตรงกัน Operation journal เก็บผลลัพธ์ของงานย่อยที่เสร็จแล้ว เพื่อให้กู้คืนกลางเฟสได้โดยไม่เรียกซ้ำ และใช้ replay policy ของ Tool เพื่อหยุดเมื่อผลข้างเคียงยังไม่แน่ชัด ดู [Durable execution runtime](docs/execution-runtime.md) และ [Operation journal](docs/operation-journal.md)
 
 ## ตัวอย่างหลายโดเมน
 
@@ -157,7 +166,7 @@ python evaluation/run_evaluation.py
 
 ## ข้อจำกัดปัจจุบัน
 
-AgentTree ทำงานแบบซิงโครนัสและเก็บข้อมูลในหน่วยความจำ ไม่มีโปรโตคอล A2A, การส่งข้อความระหว่างเอเจนต์แบบ peer-to-peer, persistence/ฐานข้อมูล, การประมวลผลแบบกระจาย, การวางแผนใช้เครื่องมืออัตโนมัติ, provider fallback/การกำหนดเส้นทางตามต้นทุน, Web API หรือ GUI อะแดปเตอร์เสริมยังเป็นการเชื่อมต่อระยะแรกและต้องอาศัยการกำหนดค่าจากแอปพลิเคชัน การประเมินผลแสดงพฤติกรรมซอฟต์แวร์ภายใต้ชุดข้อมูลที่ให้ผลแน่นอน ไม่ได้ยืนยันความฉลาดของโมเดล ความถูกต้องในทุกโดเมน ความสามารถในการปรับขนาด หรือความน่าเชื่อถือระดับ production
+AgentTree มี API หลักแบบซิงโครนัสและมี runtime สำหรับงานพื้นหลังพร้อม SQLite persistence แต่ยังไม่มีโปรโตคอล A2A, การประมวลผลแบบกระจาย, provider fallback/การกำหนดเส้นทางตามต้นทุน, Web API หรือ GUI การวางแผนใช้เครื่องมืออาศัยการตอบกลับแบบ tool calling ของ provider และการกำหนดสิทธิ์จากแอปพลิเคชัน การประเมินผลแสดงพฤติกรรมซอฟต์แวร์ภายใต้ชุดข้อมูลที่ให้ผลแน่นอน ไม่ได้ยืนยันความฉลาดของโมเดล ความถูกต้องในทุกโดเมน ความสามารถในการปรับขนาด หรือความน่าเชื่อถือระดับ production
 
 โครงการยังไม่ได้เลือกหรือประกาศสัญญาอนุญาตโอเพนซอร์ส ดังนั้น repository นี้ยังไม่ได้ให้สิทธิ์ใช้งาน แก้ไข หรือแจกจ่าย ควรเลือกและเพิ่มสัญญาอนุญาตก่อนเผยแพร่สู่สาธารณะ
 
@@ -172,3 +181,9 @@ python -m build
 ```
 
 การทดสอบให้ผลแน่นอนและไม่เรียก provider จริง การทดสอบการเชื่อมต่อ MCP ใช้ fixture แบบ stdio ภายในเครื่องหรือ loopback ผลลัพธ์ `build/`, `dist/`, egg-info, cache, virtual environment, ข้อมูลรับรอง และผล coverage ที่สร้างขึ้นจะถูก ignore ดู [CONTRIBUTING.md](CONTRIBUTING.md) และ [CHANGELOG.md](CHANGELOG.md)
+
+# Phase 7 structured artifacts and streams
+
+Execution-owned artifact references, durable event cursors, and opt-in provider
+streaming are documented in [artifacts and streaming](docs/artifacts-and-streaming.md).
+Artifact file operations are declarations; AgentTree does not apply them.

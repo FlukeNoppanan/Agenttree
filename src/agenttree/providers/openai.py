@@ -4,7 +4,7 @@ from typing import Any
 
 from agenttree.providers.base import BaseProvider
 from agenttree.providers._adapter import create_client, field, prepare, response, validate_config
-from agenttree.providers.exceptions import ProviderConfigurationError, ProviderRuntimeError
+from agenttree.providers.exceptions import ProviderConfigurationError, ProviderRuntimeError, normalize_provider_error
 from agenttree.providers.models import ProviderConfig, ProviderRequest, ProviderResponse, ProviderUsage
 
 
@@ -34,6 +34,8 @@ class OpenAIProvider(BaseProvider):
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         """Translate a generic request and normalize SDK output and failures."""
         model, prompt, temperature, tokens = prepare(self.config, request)
+        if request.provider_options or request.response_format is not None or request.timeout is not None:
+            raise ProviderConfigurationError("OpenAI adapter does not support these optional request fields")
         kwargs: dict[str, Any] = {"model": model, "input": prompt}
         if request.system_prompt is not None:
             kwargs["instructions"] = request.system_prompt
@@ -56,5 +58,5 @@ class OpenAIProvider(BaseProvider):
         except ProviderRuntimeError:
             raise
         except Exception as error:
-            raise ProviderRuntimeError("OpenAIProvider generation failed") from error
-
+            normalized = normalize_provider_error(error)
+        raise normalized

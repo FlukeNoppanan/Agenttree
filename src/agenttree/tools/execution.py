@@ -91,7 +91,7 @@ class ToolExecutor:
                 tool.id,
                 tool.name,
                 tool.metadata,
-                error=f"{type(error).__name__}: {error}",
+                error=type(error).__name__,
             )
             raise
         event_type = (
@@ -106,7 +106,7 @@ class ToolExecutor:
             tool.id,
             tool.name,
             tool.metadata,
-            error=result.error,
+            error=result.error_type or ("ToolExecutionError" if not result.success else None),
         )
         return result
 
@@ -123,6 +123,7 @@ class ToolExecutor:
     ) -> None:
         if trace is None:
             return
+        from agenttree.tools.runtime import _safe_value
         trace.append(ExecutionEvent(
             event_type=event_type,
             task_id=trace.task_id,
@@ -131,7 +132,7 @@ class ToolExecutor:
             metadata={
                 "tool_id": tool_id,
                 "tool_name": tool_name,
-                "tool_metadata": dict(tool_metadata),
+                "tool_metadata": _safe_value(dict(tool_metadata)),
                 "error": error,
             },
         ))

@@ -251,8 +251,8 @@ def test_provider_failure_becomes_failed_agent_result() -> None:
     ).execute(task, subtask, specialist)
     assert result.success is False
     assert result.output is None
-    assert result.error == "RuntimeError: provider unavailable"
-    assert result.metadata == {"provider": "failing"}
+    assert result.error == "RuntimeError: provider call failed"
+    assert result.metadata == {"provider": "failing", "error_type": "RuntimeError"}
 
 
 def test_invalid_provider_response_is_a_contract_error() -> None:
@@ -316,7 +316,7 @@ def test_provider_failure_does_not_erase_or_stop_other_results() -> None:
         ExecutionStatus.FAILED, ExecutionStatus.COMPLETED,
     )
     assert executions[0].agent_result is not None
-    assert executions[0].agent_result.error == "RuntimeError: provider unavailable"
+    assert executions[0].agent_result.error == "RuntimeError: provider call failed"
     assert executions[1].agent_result is not None
     assert executions[1].agent_result.success is True
     assert result.manager_executions[0].status is ExecutionStatus.PARTIAL
@@ -443,7 +443,7 @@ def test_execution_trace_orders_success_failure_and_completion_events() -> None:
     )
     failure_event = result.trace.events[-2]
     assert failure_event.actor_id == second.id
-    assert failure_event.metadata["error"] == "RuntimeError: provider unavailable"
+    assert failure_event.metadata["error"] == "RuntimeError: provider call failed"
 
 
 def test_skipped_assignment_trace_event() -> None:

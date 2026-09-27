@@ -11,11 +11,8 @@ class SequentialOrchestrationBackend(BaseOrchestrationBackend):
 
     def run(self, context: OrchestrationContext) -> FinalResult:
         """Call each existing phase once; engine methods own revision loops."""
-        for phase in (
-            context.planning, context.delegation, context.execution,
-            context.manager_review, context.final_review,
-        ):
-            phase()
+        for phase in ("planning", "delegation", "execution", "manager_review", "final_review"):
+            context.run_phase(phase)
             if context.result is not None:
                 return context.result
         raise BackendConfigurationError("Sequential backend produced no FinalResult")

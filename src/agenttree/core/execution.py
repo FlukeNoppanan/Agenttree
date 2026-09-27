@@ -2,10 +2,12 @@
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
 from agenttree.agents import SpecialistAgent
+from agenttree.core.execution_control import ExecutionCancelled
 from agenttree.models import AgentResult, Subtask, Task
 from agenttree.providers import (
     BaseProvider,
@@ -43,6 +45,7 @@ class ProviderSpecialistExecutor(BaseSpecialistExecutor):
         *,
         provider_registry: ProviderRegistry,
         provider_bindings: Mapping[str, str],
+        model_bindings: Mapping[str, str] | None = None,
     ) -> None:
         if not isinstance(provider_registry, ProviderRegistry):
             raise TypeError("provider_registry must be a ProviderRegistry")
@@ -54,6 +57,7 @@ class ProviderSpecialistExecutor(BaseSpecialistExecutor):
                 raise ValueError("Provider binding names must be non-empty strings")
         self._provider_registry = provider_registry
         self._provider_bindings = bindings
+        self._model_bindings = dict(model_bindings or {})
 
     @property
     def provider_registry(self) -> ProviderRegistry:
@@ -93,17 +97,27 @@ class ProviderSpecialistExecutor(BaseSpecialistExecutor):
         self._validate_inputs(task, subtask, specialist)
         provider = self.resolve_provider(specialist)
         request = self._build_request(task, subtask, specialist)
+        if specialist.id in self._model_bindings:
+            request = replace(request, model=self._model_bindings[specialist.id])
         try:
-            response = provider.generate(request)
+            from agenttree.tools.runtime import generate_with_tools
+            response = generate_with_tools(specialist.id, provider, request, "specialist")
+        except ExecutionCancelled:
+            raise
         except Exception as error:
+            from agenttree.core.execution_store import ExecutionRecoveryBlocked
+            if isinstance(error, ExecutionRecoveryBlocked):
+                raise
             return AgentResult(
                 agent_id=specialist.id,
                 success=False,
-                error=f"{type(error).__name__}: {error}",
-                metadata={"provider": provider.name},
+                error=f"{type(error).__name__}: provider call failed",
+                metadata={"provider": provider.name, "error_type": type(error).__name__},
             )
         if not isinstance(response, ProviderResponse):
             raise TypeError("provider.generate must return a ProviderResponse")
+        from agenttree.core.usage import record_usage
+        record_usage("specialist", response)
         return AgentResult(
             agent_id=specialist.id,
             success=True,

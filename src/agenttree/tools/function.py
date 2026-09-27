@@ -11,7 +11,7 @@ from inspect import (
 )
 from typing import Any, Callable, Mapping
 
-from agenttree.tools.base import BaseTool
+from agenttree.tools.base import BaseTool, ToolRecoveryPolicy
 from agenttree.tools.models import ToolInputSpec, ToolParameter, ToolResult
 
 
@@ -68,6 +68,8 @@ class FunctionTool(BaseTool):
         description: str = "",
         tool_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
+        enabled: bool = True,
+        recovery_policy: ToolRecoveryPolicy = ToolRecoveryPolicy.UNKNOWN,
     ) -> None:
         if not callable(function):
             raise TypeError("function must be callable")
@@ -109,6 +111,8 @@ class FunctionTool(BaseTool):
                 accepts_var_keyword=accepts_var_keyword,
             ),
             metadata=metadata,
+            enabled=enabled,
+            recovery_policy=recovery_policy,
         )
 
     @property

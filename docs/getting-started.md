@@ -42,7 +42,8 @@ framework.bind_provider(specialist, provider)
 
 result = framework.run(Task(objective="Prepare a summary"))
 assert result.success
-print(result.content)
+print(result.final_output)
+print(result.orchestration)  # structured diagnostics
 print(result.trace.events)
 ```
 

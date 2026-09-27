@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 from dataclasses import replace
+from typing import Any, Callable
+
 
 from agenttree.agents import ManagerAgent, RootAgent, SpecialistAgent
 from agenttree.core import (
@@ -43,6 +45,25 @@ from agenttree.orchestration.models import (
     RevisionRecord,
 )
 from agenttree.registry import CapabilityRegistry
+
+
+def _journal_action(part: str, kind: str, identity: Any, action: Callable[[], Any],
+                    agent_id: str | None = None) -> Any:
+    from agenttree.core.operation_journal import current_journal
+    from agenttree.core.artifacts import _active_artifact_producer, _active_artifact_operation
+    role = ("specialist" if kind.startswith("specialist.") else
+            "manager" if kind.startswith("manager.") else "root")
+    producer_token = _active_artifact_producer.set((role, agent_id))
+    operation_token = _active_artifact_operation.set(part)
+    journal = current_journal()
+    try:
+        if journal is None:
+            return action()
+        return journal.run(journal.child_key(part), kind, identity, action,
+                           agent_id=agent_id)
+    finally:
+        _active_artifact_operation.reset(operation_token)
+        _active_artifact_producer.reset(producer_token)
 
 
 class OrchestrationEngine:
@@ -205,12 +226,12 @@ class OrchestrationEngine:
                     ),
                 },
             ))
-            subtasks = decomposer.decompose_with_capabilities(
-                task,
-                manager,
-                triage_result,
-                available_specialist_capabilities,
-            )
+            subtasks = _journal_action(
+                f"manager:{manager.id}:decompose", "manager.decompose",
+                (task.id, manager.id, triage_result, available_specialist_capabilities),
+                lambda: decomposer.decompose_with_capabilities(
+                    task, manager, triage_result, available_specialist_capabilities),
+                manager.id)
             self._validate_subtasks(task, manager, subtasks, seen_subtask_ids)
             assignments: list[SpecialistAssignment] = []
 
@@ -360,7 +381,10 @@ class OrchestrationEngine:
                             "subtask_id": subtask.id,
                         },
                     ))
-                    agent_result = executor.execute(task, subtask, specialist)
+                    agent_result = _journal_action(
+                        f"manager:{manager.id}:subtask:{subtask.id}:specialist:{specialist.id}",
+                        "specialist.generate", (task.id, subtask, specialist.id),
+                        lambda: executor.execute(task, subtask, specialist), specialist.id)
                     self._validate_agent_result(specialist.id, agent_result)
                     execution_status = (
                         ExecutionStatus.COMPLETED
@@ -553,17 +577,18 @@ class OrchestrationEngine:
                 message="Root final review started",
                 metadata={"review_number": len(final_reviews) + 1},
             ))
-            final_review = final_reviewer.review(task, root_agent, current)
+            final_review = _journal_action(
+                f"root:final_review:{len(final_reviews) + 1}", "root.final_review",
+                (task.id, root_agent.id, current.manager_results),
+                lambda: final_reviewer.review(task, root_agent, current), root_agent.id)
             self._validate_final_review_result(root_agent.id, final_review)
             final_reviews.append(final_review)
 
             if final_review.decision is ReviewDecision.PASS:
-                status = (
-                    FinalStatus.COMPLETED
-                    if current.status is ManagerReviewStatus.PASSED
-                    else FinalStatus.PARTIAL
-                )
-                success = True
+                status = (FinalStatus.COMPLETED if current.status is ManagerReviewStatus.PASSED
+                          else FinalStatus.PARTIAL)
+                success = current.status in (ManagerReviewStatus.PASSED,
+                                             ManagerReviewStatus.PARTIAL)
                 trace.append(ExecutionEvent(
                     event_type=OrchestrationEventType.FINAL_REVIEW_PASSED.value,
                     task_id=task.id,
@@ -857,14 +882,21 @@ class OrchestrationEngine:
                     "review_number": len(reviews) + 1,
                 },
             ))
-            review_result = reviewer.review(
-                task, subtask, manager, current_executions,
-            )
+            review_result = _journal_action(
+                f"manager:{manager.id}:subtask:{subtask.id}:review:{len(reviews) + 1}",
+                "manager.review", (task.id, subtask, manager.id, current_executions),
+                lambda: reviewer.review(task, subtask, manager, current_executions), manager.id)
             self._validate_review_result(manager.id, review_result)
             reviews.append(review_result)
 
             if review_result.decision is ReviewDecision.PASS:
-                status = ManagerReviewStatus.PASSED
+                successful = sum(
+                    execution.agent_result is not None and execution.agent_result.success
+                    for execution in current_executions
+                )
+                status = (ManagerReviewStatus.PASSED if successful == len(current_executions)
+                          and successful > 0 else ManagerReviewStatus.PARTIAL if successful
+                          else ManagerReviewStatus.FAILED)
                 trace.append(ExecutionEvent(
                     event_type=OrchestrationEventType.MANAGER_REVIEW_PASSED.value,
                     task_id=task.id,
@@ -998,7 +1030,10 @@ class OrchestrationEngine:
                 message="Revision specialist execution started",
                 metadata={"subtask_id": subtask.id},
             ))
-            agent_result = executor.execute(task, subtask, specialist)
+            agent_result = _journal_action(
+                f"subtask:{subtask.id}:revision:{subtask.metadata['revision']['revision_number']}:specialist:{specialist.id}",
+                "specialist.revision", (task.id, subtask, specialist.id),
+                lambda: executor.execute(task, subtask, specialist), specialist.id)
             self._validate_agent_result(specialist.id, agent_result)
             execution_status = (
                 ExecutionStatus.COMPLETED

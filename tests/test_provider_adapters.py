@@ -162,13 +162,14 @@ def test_missing_model_and_invalid_context_fail_before_sdk_call(adapter: type) -
 
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
-def test_sdk_failure_is_chained_provider_runtime_error(adapter: type) -> None:
+def test_sdk_failure_has_safe_provider_runtime_error(adapter: type) -> None:
     original = RuntimeError("fake SDK rate limit")
     client = FakeClient(None, original)
     provider = adapter(ProviderConfig(provider_name="fixture", model="m"), client=client)
     with pytest.raises(ProviderRuntimeError) as caught:
         provider.generate(ProviderRequest(prompt="x"))
-    assert caught.value.__cause__ is original
+    assert caught.value.__context__ is None
+    assert "fake SDK rate limit" not in str(caught.value)
 
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
@@ -218,12 +219,15 @@ def test_sdk_construction_parameters_no_generation(adapter: type, monkeypatch: p
         else {"api_key": "fake-key"}
     )
     provider = adapter(ProviderConfig(provider_name="fixture", model="m"), **options)
-    assert constructed == [options]
+    expected = ({**options, "http_options": {"timeout": 15000}}
+                if adapter is GeminiProvider else options)
+    assert constructed == [expected]
     assert fake.calls == []
     assert "api_key" not in vars(provider.config)
     constructed.clear()
     adapter(ProviderConfig(provider_name="environment", model="m"))
-    assert constructed == [{}]  # SDK reads its own environment defaults.
+    assert constructed == ([{"http_options": {"timeout": 15000}}]
+                           if adapter is GeminiProvider else [{}])
 
 
 def test_three_specialists_use_external_provider_bindings() -> None:
@@ -295,7 +299,8 @@ def test_openai_custom_base_url_and_constructor_failure(monkeypatch: pytest.Monk
     monkeypatch.setattr(_adapter, "import_module", lambda _: SimpleNamespace(OpenAI=broken))
     with pytest.raises(ProviderConfigurationError) as caught:
         OpenAIProvider(ProviderConfig(provider_name="custom", model="m"))
-    assert caught.value.__cause__ is error
+    assert caught.value.__context__ is None
+    assert "fake missing credentials" not in str(caught.value)
 
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
@@ -311,3 +316,14 @@ def test_plain_dict_raw_response_and_model_fallback(adapter: type) -> None:
     assert result.model == "configured"
     assert result.raw_response == raw
     assert result.raw_response is not raw
+
+
+def test_raw_response_redacts_sensitive_fields():
+    from agenttree.providers._adapter import response
+
+    raw = {"visible": "ok", "reasoning": "hidden text",
+           "nested": {"authorization": "Bearer private-key", "value": 1}}
+    result = response("ok", "m", "fixture", None,
+                      ProviderRequest(prompt="x"), raw, True)
+    assert result.raw_response == {"visible": "ok", "nested": {"value": 1}}
+    assert "private-key" not in repr(result)

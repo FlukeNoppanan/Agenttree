@@ -82,7 +82,11 @@ class WorkflowStateManager:
             )
 
         expected = self._NEXT_PHASE.get(state.current_phase)
-        if phase is not expected:
+        if phase is not expected and not (
+            phase is WorkflowPhase.COMPLETED
+            and state.current_phase is WorkflowPhase.PLANNING
+            and getattr(result, "metadata", {}).get("direct_response") is True
+        ):
             raise ValueError(
                 f"Invalid workflow transition: {state.current_phase.value} -> "
                 f"{phase.value}",

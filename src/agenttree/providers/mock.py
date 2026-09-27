@@ -8,6 +8,7 @@ from agenttree.providers.models import (
     ProviderRequest,
     ProviderResponse,
     ProviderUsage,
+    ProviderCapabilities,
 )
 
 
@@ -41,6 +42,11 @@ class MockProvider(BaseProvider):
     def requests(self) -> tuple[ProviderRequest, ...]:
         """Return a snapshot of requests in call order."""
         return tuple(self._requests)
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Mock requests and static responses support offline tool-call fixtures."""
+        return ProviderCapabilities(tool_calling=True)
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         """Record ``request`` and return the configured deterministic response."""

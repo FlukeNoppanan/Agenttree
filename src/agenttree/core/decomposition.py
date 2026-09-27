@@ -81,6 +81,7 @@ class ProviderTaskDecomposer(_ProviderDecision, BaseTaskDecomposer):
             "task": context,
             "triage": asdict(triage),
             "manager": {
+                "id": manager.id,
                 "name": manager.name,
                 "description": manager.description,
                 "capabilities": manager.capabilities,

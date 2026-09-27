@@ -2,6 +2,24 @@
 
 This project records notable changes for each pre-release milestone.
 
+## 0.2.2 - 2026-09-27
+
+- Added Groq, OpenRouter, Cerebras, and custom OpenAI-compatible providers, model
+  discovery, provider streaming, and per-Agent provider/model bindings.
+- Added bounded Root, Manager, and Specialist Tool sessions; Manager
+  collaboration; Root planning and final synthesis; and usage accounting.
+- Added background execution, durable execution events and recovery, live
+  output deltas, and artifact storage and selection.
+- Committed terminal results and their durable completion events together so
+  a completed handle cannot expose a result before its completion event.
+- Offline regression and clean wheel installation qualify this Core release.
+  Live provider calls remain unverified without configured credentials.
+- Live deltas are process-local and do not replay after reconnect. Durable
+  recovery requires a persistent execution store. Studio currently uses
+  `InMemoryExecutionStore`, so its integration does not provide durable Core
+  recovery. Live Manager collaboration depends on the selected model
+  producing the expected output.
+
 ## 0.2.1 - 2026-09-05
 
 - Fixed provider-powered triage so the orchestration engine supplies the

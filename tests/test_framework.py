@@ -74,7 +74,7 @@ def test_public_sdk_runs_complete_workflow_and_preserves_task_and_trace() -> Non
     ))
     events = [event.event_type for event in result.trace.events]
     assert events[0] == "orchestration.started"
-    assert events[-1] == "orchestration.final_result_created"
+    assert events[-2:] == ["root.synthesis.completed", "execution.completed"]
     for partial in (state.orchestration_plan, state.delegation_result,
                     state.execution_result, state.manager_review_result):
         count = partial.trace.event_count
@@ -332,7 +332,7 @@ def test_no_work_returns_explicit_framework_failure(missing: str) -> None:
     assert result.final_review.metadata["review_performed"] is False
     assert tree.last_state.current_phase is WorkflowPhase.FAILED
     assert tree.last_state.final_result == result
-    assert result.trace.events[-1].event_type == "orchestration.final_result_created"
+    assert result.trace.events[-1].event_type == "execution.failed"
 
 
 def test_missing_provider_binding_is_exception_before_any_execution() -> None:

@@ -6,6 +6,11 @@ from agenttree.models.state import WorkflowPhase, WorkflowState
 from agenttree.models.subtask import Subtask, SubtaskTemplate
 from agenttree.models.task import Task, TaskContext, TaskStatus
 from agenttree.models.triage import TriageResult
+from agenttree.models.collaboration import (
+    ManagerMessage, ManagerMessageType, ManagerMessageStatus,
+    ManagerCollaborationRequest, ManagerCollaborationOutcome,
+)
+from agenttree.models.artifact import ArtifactRef, ArtifactType, FileIntent
 
 __all__ = [
     "Task",
@@ -21,4 +26,7 @@ __all__ = [
     "TriageResult",
     "Subtask",
     "SubtaskTemplate",
+    "ManagerMessage", "ManagerMessageType", "ManagerMessageStatus",
+    "ManagerCollaborationRequest", "ManagerCollaborationOutcome",
+    "ArtifactRef", "ArtifactType", "FileIntent",
 ]

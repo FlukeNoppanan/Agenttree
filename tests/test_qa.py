@@ -173,7 +173,7 @@ def _revision_failure_run(
     outcome = result.manager_results[0].subtask_outcomes[0]
     assert outcome.status is ManagerReviewStatus.FAILED
     assert outcome.executions[-1].agent_result is not None
-    assert "Offline revision failure" in outcome.executions[-1].agent_result.error
+    assert outcome.executions[-1].agent_result.error == "ProviderRuntimeError: provider call failed"
     return result, tuple(event.event_type for event in result.trace.events)
 
 
@@ -237,4 +237,4 @@ def test_full_trace_formatter_preserves_event_order() -> None:
 
     assert len(rendered) == result.trace.event_count
     assert rendered[0] == "[01] orchestration.started"
-    assert rendered[-1].endswith("orchestration.final_result_created")
+    assert rendered[-1].endswith("execution.completed")

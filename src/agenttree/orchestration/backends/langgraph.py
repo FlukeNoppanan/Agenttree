@@ -20,7 +20,7 @@ class _GraphState(TypedDict):
 def _node(phase: str) -> Callable[[_GraphState], dict[str, Any]]:
     def invoke(state: _GraphState) -> dict[str, Any]:
         context = state["context"]
-        getattr(context, phase)()
+        context.run_phase(phase)
         return {"result": context.result}
     return invoke
 

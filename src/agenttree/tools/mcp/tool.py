@@ -3,7 +3,7 @@
 from copy import deepcopy
 from typing import Any, Mapping
 
-from agenttree.tools.base import BaseTool
+from agenttree.tools.base import BaseTool, ToolRecoveryPolicy
 from agenttree.tools.mcp.base import BaseMCPClient
 from agenttree.tools.mcp.models import MCPCallResult, MCPToolDefinition
 from agenttree.tools.models import ToolInputSpec, ToolParameter, ToolResult
@@ -82,6 +82,8 @@ class MCPTool(BaseTool):
         definition: MCPToolDefinition,
         name: str | None = None,
         tool_id: str | None = None,
+        enabled: bool = True,
+        recovery_policy: ToolRecoveryPolicy = ToolRecoveryPolicy.UNKNOWN,
     ) -> None:
         if not isinstance(client, BaseMCPClient):
             raise TypeError("client must be a BaseMCPClient")
@@ -108,6 +110,8 @@ class MCPTool(BaseTool):
                     "definition_metadata": deepcopy(definition.metadata),
                 },
             },
+            enabled=enabled,
+            recovery_policy=recovery_policy,
         )
 
     @property

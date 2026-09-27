@@ -11,6 +11,7 @@ from agenttree.models import (
     ReviewResult,
     Subtask,
     TriageResult,
+    ArtifactRef,
 )
 from agenttree.tracing import ExecutionEventType
 
@@ -231,3 +232,12 @@ class FinalResult:
     revisions: tuple[FinalRevisionRecord, ...]
     trace: ExecutionTrace
     metadata: dict[str, Any] = field(default_factory=dict)
+    final_output: str | None = None
+    usage: dict[str, Any] = field(default_factory=dict)
+    error: dict[str, str] | None = None
+    artifacts: tuple[ArtifactRef, ...] = ()
+
+    @property
+    def orchestration(self) -> dict[str, Any]:
+        """The legacy content field, kept for structured diagnostics."""
+        return self.content

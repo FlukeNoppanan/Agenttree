@@ -45,6 +45,12 @@ class ProviderRequest:
     model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+    timeout: float | None = None
+    response_format: dict[str, Any] | None = None
+    provider_options: dict[str, Any] = field(default_factory=dict)
+    tools: tuple[dict[str, Any], ...] = ()
+    tool_choice: str | None = None
+    tool_history: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -57,3 +63,52 @@ class ProviderResponse:
     usage: ProviderUsage | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     raw_response: Any = None
+    finish_reason: str | None = None
+    tool_calls: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class ProviderStreamChunk:
+    """One transient text delta or the complete normalized response."""
+
+    delta_text: str = ""
+    response: ProviderResponse | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.delta_text, str):
+            raise TypeError("delta_text must be text")
+        if self.response is not None and not isinstance(self.response, ProviderResponse):
+            raise TypeError("response must be a ProviderResponse")
+
+
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    """Provider-level support; None means unknown or model-dependent."""
+
+    chat: bool | None = True
+    streaming: bool | None = None
+    structured_output: bool | None = None
+    tool_calling: bool | None = None
+    vision: bool | None = None
+    reasoning: bool | None = None
+    model_discovery: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderModel:
+    """One discovered model with only known fields populated."""
+
+    id: str
+    provider: str
+    name: str | None = None
+    context_window: int | None = None
+    capabilities: ProviderCapabilities | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ProviderValidationResult:
+    valid: bool
+    provider: str
+    message: str
+    error_category: str | None = None

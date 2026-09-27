@@ -4,9 +4,40 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from types import MappingProxyType
 from typing import Any, Mapping
+from enum import Enum
+from dataclasses import dataclass
 from uuid import uuid4
 
 from agenttree.tools.models import ToolInputSpec, ToolResult
+
+
+class ToolRecoveryPolicy(str, Enum):
+    PURE = "pure"
+    IDEMPOTENT = "idempotent"
+    RECONCILABLE = "reconcilable"
+    NON_IDEMPOTENT = "non_idempotent"
+    UNKNOWN = "unknown"
+
+
+class ToolReconciliationStatus(str, Enum):
+    COMPLETED = "completed"
+    NOT_COMPLETED = "not_completed"
+    UNKNOWN = "unknown"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class ToolReconciliation:
+    status: ToolReconciliationStatus
+    result: ToolResult | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, ToolReconciliationStatus):
+            raise TypeError("Invalid reconciliation status")
+        if self.status is ToolReconciliationStatus.COMPLETED and not isinstance(self.result, ToolResult):
+            raise ValueError("Completed reconciliation requires a ToolResult")
+        if self.status is not ToolReconciliationStatus.COMPLETED and self.result is not None:
+            raise ValueError("Only completed reconciliation can carry a result")
 
 
 class BaseTool(ABC):
@@ -20,6 +51,8 @@ class BaseTool(ABC):
         tool_id: str | None = None,
         input_spec: ToolInputSpec | None = None,
         metadata: Mapping[str, Any] | None = None,
+        enabled: bool = True,
+        recovery_policy: ToolRecoveryPolicy = ToolRecoveryPolicy.UNKNOWN,
     ) -> None:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("name must be a non-empty string")
@@ -37,6 +70,12 @@ class BaseTool(ABC):
         self._description = description
         self._input_spec = input_spec or ToolInputSpec()
         self._metadata = deepcopy(dict(metadata or {}))
+        if not isinstance(enabled, bool):
+            raise TypeError("enabled must be a bool")
+        self._enabled = enabled
+        if not isinstance(recovery_policy, ToolRecoveryPolicy):
+            raise TypeError("recovery_policy must be a ToolRecoveryPolicy")
+        self._recovery_policy = recovery_policy
 
     @property
     def id(self) -> str:
@@ -62,6 +101,18 @@ class BaseTool(ABC):
     def metadata(self) -> Mapping[str, Any]:
         """Return a read-only, isolated metadata snapshot."""
         return MappingProxyType(deepcopy(self._metadata))
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @property
+    def recovery_policy(self) -> ToolRecoveryPolicy:
+        return self._recovery_policy
+
+    def reconcile(self, operation: Any) -> ToolReconciliation | ToolResult | None:
+        """Return a confirmed result or None if external outcome remains unknown."""
+        return None
 
     @abstractmethod
     def invoke(self, arguments: Mapping[str, Any]) -> ToolResult:

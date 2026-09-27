@@ -372,6 +372,7 @@ def test_failed_manager_result_is_preserved_after_final_pass() -> None:
     result, _ = _finalize(pipeline=pipeline)
     assert pipeline[2].status is ManagerReviewStatus.FAILED
     assert result.status is FinalStatus.PARTIAL
+    assert result.success is False
     assert result.manager_results[0].status is ManagerReviewStatus.FAILED
     assert result.manager_results[0].subtask_outcomes[0].feedback == (
         "Manager rejected work"

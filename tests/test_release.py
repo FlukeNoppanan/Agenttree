@@ -75,7 +75,7 @@ def test_root_exports_are_curated_and_backward_compatible() -> None:
 
 
 def test_distribution_version_and_typed_marker() -> None:
-    assert version("agenttree") == "0.2.1"
+    assert version("agenttree") == "0.2.2"
     assert agenttree.__version__ == version("agenttree")
     assert files("agenttree").joinpath("py.typed").is_file()
 

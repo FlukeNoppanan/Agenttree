@@ -7,7 +7,7 @@ import math
 from typing import Any
 
 from agenttree.providers.exceptions import (
-    ProviderConfigurationError, ProviderDependencyError, ProviderRuntimeError,
+    ProviderConfigurationError, ProviderDependencyError, MalformedProviderResponseError,
 )
 from agenttree.providers.models import ProviderConfig, ProviderRequest, ProviderResponse, ProviderUsage
 
@@ -68,20 +68,33 @@ def create_client(module: str, constructor: str, extra: str, **kwargs: Any) -> A
         ) from error
     try:
         return getattr(sdk, constructor)(**kwargs)
-    except Exception as error:
-        raise ProviderConfigurationError(f"Could not initialize {extra} client") from error
+    except Exception:
+        pass
+    raise ProviderConfigurationError(f"Could not initialize {extra} client")
 
 
 def field(value: Any, name: str, default: Any = None) -> Any:
     return value.get(name, default) if isinstance(value, dict) else getattr(value, name, default)
 
 
+def _redact_raw(value: Any) -> Any:
+    forbidden = {"authorization", "api_key", "apikey", "secret", "token",
+                 "reasoning", "reasoning_content", "thinking", "thoughts",
+                 "chain_of_thought"}
+    if isinstance(value, dict):
+        return {key: _redact_raw(item) for key, item in value.items()
+                if isinstance(key, str) and key.casefold() not in forbidden}
+    if isinstance(value, list):
+        return [_redact_raw(item) for item in value]
+    return deepcopy(value)
+
+
 def response(content: Any, model: Any, provider: str, usage: ProviderUsage | None,
              request: ProviderRequest, raw: Any, keep_raw: bool) -> ProviderResponse:
     if not isinstance(content, str) or not content.strip():
-        raise ProviderRuntimeError("Provider returned no normalized text content")
+        raise MalformedProviderResponseError("Provider returned no normalized text content")
     if not isinstance(model, str) or not model:
-        raise ProviderRuntimeError("Provider returned an invalid model identity")
+        raise MalformedProviderResponseError("Provider returned an invalid model identity")
     raw_data = None
     if keep_raw:
         if isinstance(raw, dict):
@@ -89,6 +102,8 @@ def response(content: Any, model: Any, provider: str, usage: ProviderUsage | Non
         elif callable(getattr(raw, "model_dump", None)):
             raw_data = raw.model_dump(mode="json")
         # Unknown injected response types are intentionally not leaked.
+        if raw_data is not None:
+            raw_data = _redact_raw(raw_data)
     return ProviderResponse(
         content=content, model=model, provider=provider, usage=usage,
         metadata={"request_metadata": deepcopy(request.metadata)}, raw_response=raw_data,

@@ -59,6 +59,7 @@ class ProviderManagerReviewer(_ProviderDecision, BaseManagerReviewer):
             "manager_review", REVIEW_PROMPT,
             "Review the specialist results for this subtask as its manager.",
             {"task": context, "subtask": asdict(subtask), "manager": {
+                "id": manager.id,
                 "name": manager.name, "description": manager.description,
                 "capabilities": manager.capabilities,
             }, "specialist_executions": [asdict(item) for item in specialist_executions]},

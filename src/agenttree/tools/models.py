@@ -34,6 +34,9 @@ class ToolResult:
     output: Any = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    call_id: str | None = None
+    duration_ms: float | None = None
+    error_type: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.tool_id, str) or not self.tool_id.strip():
@@ -46,3 +49,15 @@ class ToolResult:
             raise TypeError("metadata must be a dict")
         object.__setattr__(self, "output", deepcopy(self.output))
         object.__setattr__(self, "metadata", deepcopy(self.metadata))
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """One model-requested call with correlation and execution identity."""
+
+    call_id: str
+    tool_name: str
+    agent_id: str
+    agent_role: str
+    arguments: Any
+    execution_id: str
