@@ -1,53 +1,92 @@
 # AgentTree
 
-AgentTree คือเฟรมเวิร์ก Python 3.10+ สำหรับประสานงานระบบหลายเอเจนต์แบบลำดับชั้นและทำงานแบบซิงโครนัส แอปพลิเคชันเจ้าบ้านเป็นผู้กำหนดเอเจนต์ ความสามารถ กลยุทธ์การตัดสินใจ ผู้ให้บริการโมเดล และเครื่องมือเสริม ส่วน AgentTree ทำหน้าที่ประสานลำดับงานดังนี้:
+AgentTree คือ hierarchical Multi-Agent orchestration framework สำหรับ Python จัดงานผ่าน **Root → Manager → Specialist** ด้วย Capability-based routing, Provider/Model bindings และ Tool/MCP runtime โดยไม่ผูกกับ domain เช่น security, network หรือ software development
 
-```text
-Root -> Manager -> Specialist -> การตรวจทานโดย Manager -> การตรวจทานขั้นสุดท้ายโดย Root
+**Version: 0.2.2 alpha** · Python **3.10+** · research framework / โครงการปริญญานิพนธ์
+
+ต้องการ Web Application สำหรับออกแบบและทดสอบ Tree: ดู [AgentTree Studio](https://github.com/FlukeNoppanan/agenttree-studio) ซึ่งเป็น repository แยกต่างหาก
+
+## แนวคิดหลักและบทบาทของ Agent
+
+- **Root** วิเคราะห์ Task ประสานงานระดับ Tree และตรวจ/สังเคราะห์ผลลัพธ์สุดท้าย
+- **Manager** รับงานที่ตรงกับ Capability แบ่งเป็น Subtask มอบหมายให้ Specialist ตรวจผล และขอ revision ภายในขอบเขตที่กำหนด
+- **Specialist** ทำงานเฉพาะด้านโดยใช้ Provider/Model และ Tools ที่ได้รับ
+
+**Orchestration Engine เป็น runtime/controller ไม่ใช่ AI Agent** Agent เป็น configuration/identity; การเลือก Provider, Tool และ execution policy ประกอบขึ้นผ่าน framework
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Task[Task] --> Engine[Orchestration Engine - controller]
+    Engine --> Triage[Root triage / Capability routing]
+    Triage --> Manager[Manager decomposition]
+    Manager --> Specialist[Specialist execution]
+    Specialist --> Review[Manager review / bounded revision]
+    Review --> Final[Root final review / synthesis]
+    Final --> Result[FinalResult]
+    Review -->|revision when requested| Specialist
+    Engine --> State[Execution state / Trace / Usage]
+    Specialist --> Bindings[Provider / Model / Tool / MCP]
+    Result --> Artifact[Artifacts]
 ```
 
-เวอร์ชัน **0.2.2** เป็นรุ่นอัลฟาก่อนเผยแพร่สำหรับประเมินเฟรมเวิร์กและทดลองเชื่อมต่อในระยะแรก
+แผนภาพแสดงลำดับหลัก ไม่ได้แปลว่าทุก Tree ต้องใช้ AI Model ในทุก strategy; framework มี deterministic strategies สำหรับทดสอบและการประกอบ workflow ด้วย
 
-## คุณสมบัติเด่น
+## Capability-Based Routing
 
-- SDK ระดับสูง `AgentTree.run(Task)` พร้อม API ระดับล่างที่ยังใช้งานได้
-- ค้นหา Manager และ Specialist ตามความสามารถ พร้อมระบุความเป็นเจ้าของอย่างชัดเจน
-- การประมวลผลที่ไม่ผูกกับผู้ให้บริการ พร้อมอะแดปเตอร์ Mock, OpenAI, Gemini และ Ollama
-- วงจรตรวจทานและแก้ไขโดย Manager และขั้นสุดท้ายที่มีขีดจำกัด
-- เครื่องมือฟังก์ชันและการเชื่อมต่อเครื่องมือ/ข้อมูลผ่าน MCP ด้วย binding ภายนอก
-- สถานะลำดับงานในหน่วยความจำและ trace การทำงานที่เรียงตามลำดับ
-- การประสานงานแบบลำดับเป็นค่าเริ่มต้น และมีแบ็กเอนด์ LangGraph เป็นตัวเลือก
-- ตัวอย่างออฟไลน์ที่ให้ผลแน่นอนและชุดข้อมูลประเมินผลหลายโดเมน
+Capability ระบุว่า Agent เหมาะกับงานประเภทใด การค้นหาและเลือก Manager/Specialist ใช้ Capability ที่ configuration กำหนด แทนการ hardcode ชื่อ domain หรือประเภท application ใน framework การ review และ revision เป็นส่วนหนึ่งของ orchestration และมีขอบเขต ไม่ใช่การวนซ้ำโดยไม่จำกัด
 
-## การติดตั้ง
+## Provider / Model
 
-ติดตั้งแกนหลักที่ไม่มี dependency จากซอร์สโค้ดที่ checkout ไว้:
+รองรับ **OpenAI, Gemini, Ollama, Groq, OpenRouter, Cerebras และ OpenAI-compatible endpoints** ผ่าน adapter boundary เดียวกัน รวมถึง `MockProvider` สำหรับ offline tests สามารถ bind Provider/Model แยกตาม Agent ได้
 
-```sh
-python -m pip install -e .
+แต่ละ Model มีความสามารถและข้อจำกัดต่างกัน โดยเฉพาะ structured decisions, Tool calling และ streaming การตั้งค่าหรือพบ Model ไม่ใช่หลักฐานว่าทุก feature ใช้งานได้ ต้องตรวจ validation/qualification ใน application ที่นำ Core ไปใช้ Credentials อยู่ใน configuration ของ Provider ไม่ควรใส่ใน Task metadata หรือ Trace
+
+## Tool และ MCP
+
+Tool Registry จัดการ definitions/bindings ส่วน Tool Executor และ Tool Sessions จัดการ invocation ตาม policy ที่กำหนด มี MCP **stdio** และ **Streamable HTTP** สำหรับ external Tools และ data sources รวมถึง Artifact Output สำหรับผลลัพธ์ที่เป็นไฟล์
+
+Tools เป็นทรัพยากรที่ Agent ใช้ ไม่ใช่ Agent อีกบทบาทหนึ่ง การอนุญาตให้ใช้ Tool, ขอบเขต filesystem และ Secret management ต้องกำหนดใน host application ไม่ได้ถือว่าทุก Tool ปลอดภัยโดยอัตโนมัติ
+
+## Execution Runtime
+
+- synchronous `AgentTree.run(Task(...))` คืน `FinalResult`
+- background `ExecutionRuntime` มี execution state, events, cancellation และ results
+- streaming ใช้ output deltas จาก Provider ที่รองรับจริง ไม่จำลองการพิมพ์ข้อความ
+- Trace และ usage accounting ช่วยตรวจขั้นตอนการมอบหมายงาน การ review/revision และการเรียก Tools
+- execution-store abstractions มี in-memory และ SQLite-backed persistence/checkpoints; recovery ขึ้นกับ runtime/store configuration ที่ใช้
+- controlled Manager collaboration ใช้กติกาและขอบเขตที่กำหนด ไม่ใช่ A2A หรือ distributed execution
+
+Core recovery contract ไม่ได้เท่ากับ recovery ของ deployment ทุกแบบ เช่น Studio มีข้อจำกัด active Run เมื่อ backend process restart
+
+## การติดตั้งจาก source
+
+```bash
+git clone https://github.com/FlukeNoppanan/Agenttree.git
+cd Agenttree
+git switch --detach thesis-baseline-v0.1
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
 ```
 
-dependency สำหรับการพัฒนาและการเชื่อมต่อเสริมแยกเป็น extras:
+หากต้องใช้ real Provider SDKs หรือ MCP ให้ติดตั้ง extras ที่เกี่ยวข้อง:
 
-```sh
-python -m pip install -e ".[dev]"
-python -m pip install -e ".[providers]"   # SDK ของ OpenAI + Gemini + Ollama
-python -m pip install -e ".[langgraph]"
-python -m pip install -e ".[mcp]"
+```bash
+python -m pip install -e '.[providers,mcp]'
 ```
 
-extras รายผู้ให้บริการคือ `openai`, `gemini` และ `ollama` การติดตั้ง extra จะไม่เรียก API และ AgentTree จะไม่โหลดไฟล์ `.env`
+มี extras `openai`, `gemini`, `ollama` และ `langgraph` ด้วย ดูรายการจริงใน [pyproject.toml](pyproject.toml) ตัวอย่างนี้ติดตั้งจาก repository ไม่ได้อ้างว่ามี release บน PyPI
 
-## เริ่มต้นอย่างรวดเร็ว
+## ตัวอย่างใช้งานแบบ offline
 
-ตัวอย่างฉบับสมบูรณ์นี้ทำงานแบบออฟไลน์และระบุ dependency สำหรับการตัดสินใจทั้งหมดอย่างชัดเจน:
+ตัวอย่างนี้ใช้ public API ปัจจุบันและ `MockProvider` จึงไม่ต้องมี API Key และไม่เรียกบริการที่มีค่าใช้จ่าย:
 
 ```python
 from agenttree import AgentTree, ManagerAgent, RootAgent, SpecialistAgent, Task
 from agenttree.core import (
-    RuleBasedTaskTriage,
-    StaticFinalReviewer,
-    StaticManagerReviewer,
+    RuleBasedTaskTriage, StaticFinalReviewer, StaticManagerReviewer,
     StaticTaskDecomposer,
 )
 from agenttree.models import SubtaskTemplate
@@ -55,135 +94,47 @@ from agenttree.providers import MockProvider
 
 framework = AgentTree(
     root_agent=RootAgent(name="Root"),
-    triage=RuleBasedTaskTriage(
-        {}, fallback_capabilities=("analysis",),
-    ),
+    triage=RuleBasedTaskTriage({}, fallback_capabilities=("analysis",)),
     decomposer=StaticTaskDecomposer((
-        SubtaskTemplate("Summarize the input", ("summarize",)),
+        SubtaskTemplate("Summarize the supplied information", ("summarize",)),
     )),
     manager_reviewer=StaticManagerReviewer(),
     final_reviewer=StaticFinalReviewer(),
 )
-
 manager = ManagerAgent(name="Coordinator", capabilities=("analysis",))
 specialist = SpecialistAgent(name="Summarizer", capabilities=("summarize",))
-provider = MockProvider(response_content="A deterministic offline summary.")
-
+provider = MockProvider(response_content="A concise offline summary.")
 framework.register_manager(manager)
 framework.register_specialist(manager, specialist)
 framework.register_provider(provider)
 framework.bind_provider(specialist, provider)
-
-result = framework.run(Task(objective="Summarize the input"))
+result = framework.run(Task(objective="Summarize the supplied information"))
 print(result.status.value, result.success)
-print(result.final_output)  # user-facing Root answer
-print(result.orchestration)  # structured diagnostics (legacy: result.content)
+print(result.content)
 print(result.trace.event_count)
 ```
 
-`Task` คืออินพุตมาตรฐาน และค่าที่ส่งคืนคือ `FinalResult` SDK จะคัดลอกอินพุต Task เก็บ provider binding แยกจากตัวตนของเอเจนต์ และเปิดเผยสถานะล่าสุดแบบป้องกันการแก้ไขผ่าน `framework.last_state` ดูรายละเอียดการลงทะเบียนและความล้มเหลวได้ที่ [การเริ่มต้นใช้งาน](docs/getting-started.md)
+ตัวอย่างฉบับเต็มอยู่ที่ [examples/basic_hierarchy.py](examples/basic_hierarchy.py) หลังติดตั้งแล้วเรียกได้ด้วย:
 
-## สถาปัตยกรรม
-
-```mermaid
-flowchart LR
-    App[แอปพลิเคชันของนักพัฒนา] --> SDK[AgentTree SDK]
-    SDK --> Triage[งานและการคัดแยก]
-    Triage --> Backend[แบ็กเอนด์การประสานงาน]
-    Backend --> Manager[Manager]
-    Manager --> Specialist[Specialist]
-    Specialist --> MReview[การตรวจทานโดย Manager]
-    MReview --> FReview[การตรวจทานขั้นสุดท้ายโดย Root]
-    FReview --> Result[FinalResult]
-```
-
-SDK ประกอบ registry, กลยุทธ์, executor, สถานะ, trace และบริการประสานงานที่มีอยู่เข้าด้วยกัน เอเจนต์ไม่สื่อสารกันเองแบบ peer-to-peer อย่างอิสระ แต่เฟรมเวิร์กจะประสานงานผ่านลำดับชั้น Root/Manager/Specialist นโยบายเฉพาะโดเมนยังคงอยู่ในแอปพลิเคชันของนักพัฒนา ดู [สถาปัตยกรรม](docs/architecture.md)
-
-## เอเจนต์และความสามารถ
-
-`RootAgent`, `ManagerAgent` และ `SpecialistAgent` ใช้อธิบายตัวตนและความสามารถที่คงที่ Manager เป็นเจ้าของ Specialist ของตน ส่วน `CapabilityRegistry` ใช้ค้นหาแบบ normalized เมธอดลงทะเบียนระดับสูงจะรักษาความสัมพันธ์เหล่านี้ให้สอดคล้องกัน และปฏิเสธข้อมูลซ้ำก่อนเกิดการเปลี่ยนแปลงเพียงบางส่วน ดู [เอเจนต์และความสามารถ](docs/agents-and-capabilities.md)
-
-การคัดแยกที่ขับเคลื่อนด้วย provider จะได้รับความสามารถของ Manager ที่ลงทะเบียนอยู่ในขณะนั้น ส่วนการแยกงานที่ขับเคลื่อนด้วย provider จะได้รับเฉพาะความสามารถของ Specialist ที่ลงทะเบียนและอยู่ภายใต้ Manager ที่เลือก หากคำตอบใช้ป้ายความสามารถที่ไม่รู้จัก ระบบจะยก `DecisionOutputError` ก่อนการค้นหา เพื่อป้องกันไม่ให้ผลลัพธ์จากโมเดลสร้างชื่อความสามารถที่ไม่สามารถกำหนดเส้นทางได้โดยไม่แจ้งเตือน
-
-## ผู้ให้บริการโมเดล
-
-`BaseProvider.generate(ProviderRequest)` ส่งคืน `ProviderResponse` ที่ผ่านการทำ normalization แล้ว `MockProvider` ให้ผลแน่นอนและทำงานออฟไลน์ ส่วน `OpenAIProvider`, `GeminiProvider` และ `OllamaProvider` ที่เป็นตัวเลือกจะแปลง contract เดียวกันไปยัง SDK ของแต่ละราย แอปพลิเคชันเลือกโมเดลและข้อมูลรับรองผ่านการกำหนดค่า SDK หรือ environment โดย AgentTree ไม่มีโมเดลเริ่มต้นและไม่มี fallback อัตโนมัติ ดู [ผู้ให้บริการโมเดล](docs/providers.md)
-
-## เครื่องมือและ MCP
-
-`FunctionTool` และ `MCPTool` ใช้ `ToolRegistry` และ `ToolBindingRegistry` ร่วมกัน สามารถผูกเครื่องมือกับ Root, Manager หรือ Specialist โดยแยกจาก provider binding ได้ `AgentTree.run()` เสนอเฉพาะเครื่องมือที่ผูกและเปิดใช้งานแก่โมเดล แล้วตรวจสิทธิ์และข้อจำกัดใน Python ก่อนเรียกเครื่องมือ `ToolExecutor` ยังรองรับการเรียกโดยแอปพลิเคชันอย่างชัดเจน `MockMCPClient` รองรับการทดสอบออฟไลน์ ส่วน `StdioMCPClient` และ `StreamableHttpMCPClient` เป็น transport จริงที่เลือกใช้ได้
-
-MCP ใช้เชื่อมต่อเครื่องมือและข้อมูล ไม่ใช่การสื่อสารระหว่างเอเจนต์ โมเดลเป็นผู้ร้องขอการใช้เครื่องมือที่ได้รับมอบหมาย ส่วน runtime เป็นผู้ตรวจสิทธิ์ ดู [เครื่องมือและ MCP](docs/tools-and-mcp.md)
-
-## การประสานงานระหว่าง Manager
-
-Manager ที่ลงทะเบียนและถูกเลือกใน `run()` สามารถแลกเปลี่ยนข้อมูลผ่าน runtime เมื่อกำหนดสิทธิ์แบบมีทิศทางด้วย `allow_manager_communication(sender, peer)` เท่านั้น ค่าเริ่มต้นไม่มี peer ที่ได้รับอนุญาต การสื่อสารมีขีดจำกัดของข้อความ รอบ ขนาด และเวลา พร้อม trace และ metrics แยกจาก Tool และ token usage; Specialist ไม่สามารถติดต่อ peer โดยตรง ดู [Controlled Manager collaboration](docs/manager-collaboration.md)
-
-## แบ็กเอนด์การประสานงาน
-
-`SequentialOrchestrationBackend` เป็นค่าเริ่มต้นที่ไม่ต้องใช้แพ็กเกจเสริม `LangGraphOrchestrationBackend` จะจับคู่เฟสเดียวกันเข้ากับกราฟแบบซิงโครนัสเมื่อติดตั้ง extra `langgraph` ทั้งสองแบบคงกฎการตรวจทาน ขีดจำกัดการแก้ไข contract ของสถานะ และป้าย trace ของ engine ไว้เหมือนกัน ดู [การประสานงาน](docs/orchestration.md)
-
-## สถานะและ trace การทำงาน
-
-`framework.last_state` ส่งคืน snapshot ของ `WorkflowState` ล่าสุดในหน่วยความจำ `FinalResult.trace` เก็บเหตุการณ์ตามลำดับสำหรับการคัดแยก การวางแผน การมอบหมาย การทำงานของ Specialist การตรวจทานโดย Manager การตรวจทานขั้นสุดท้าย เครื่องมือเมื่อถูกเรียกอย่างชัดเจนด้วย trace นั้น และการสร้างผลลัพธ์ `AgentTree.run()` ไม่บันทึกสถานะถาวรโดยค่าเริ่มต้น และอินสแตนซ์เฟรมเวิร์กหนึ่งตัวไม่รองรับการรันพร้อมกัน
-
-## รันงานเบื้องหลังและกู้คืน
-
-`ExecutionRuntime` รัน Tree ผ่าน worker ที่มีจำนวนจำกัดและบันทึก checkpoint หลังแต่ละเฟส ใช้ `InMemoryExecutionStore` สำหรับการใช้งานชั่วคราว หรือ `SQLiteExecutionStore` เพื่อเก็บผลลัพธ์และกู้คืนหลัง process restart คำสั่ง `tree.start(task, runtime=runtime)` ส่งคืน handle สำหรับดูสถานะ ยกเลิก รับผลลัพธ์ และอ่านเหตุการณ์ตามลำดับ ส่วน `tree.run(task)` ยังทำงานแบบซิงโครนัสเหมือนเดิม การกู้คืนต้องเรียกอย่างชัดเจนด้วย Tree ที่ประกอบกลับและมี fingerprint ตรงกัน Operation journal เก็บผลลัพธ์ของงานย่อยที่เสร็จแล้ว เพื่อให้กู้คืนกลางเฟสได้โดยไม่เรียกซ้ำ และใช้ replay policy ของ Tool เพื่อหยุดเมื่อผลข้างเคียงยังไม่แน่ชัด ดู [Durable execution runtime](docs/execution-runtime.md) และ [Operation journal](docs/operation-journal.md)
-
-## ตัวอย่างหลายโดเมน
-
-ตัวอย่างทั้งหมดที่เก็บไว้ทำงานแบบออฟไลน์:
-
-```sh
-python examples/thesis_demo.py
-python examples/thesis_demo.py --revision
+```bash
 python examples/basic_hierarchy.py
-python examples/provider_hierarchy.py
-python examples/langgraph_hierarchy.py       # ต้องติดตั้ง .[langgraph]
-python examples/domains/it_technical.py
-python examples/domains/hr_document.py
-python examples/domains/business_product.py
-```
-
-เดโมวิทยานิพนธ์แสดงการกำหนดเส้นทาง Manager/Specialist ที่ให้ผลแน่นอน provider binding ที่แยกจากกัน การตรวจทาน ผลลัพธ์สุดท้าย และสรุป trace แปดขั้นตอน โหมด `--revision` แสดง Manager ตัดสินใจ REVISE ก่อนตามด้วย PASS คำสั่งเสริมสำหรับการนำเสนอและแนวทางสำรองเมื่อเกิดความล้มเหลวอยู่ใน [เดโมวิทยานิพนธ์](docs/thesis-demo.md)
-
-โปรแกรมตัวอย่างแต่ละโดเมนกำหนดลำดับชั้นสำหรับ IT/เทคนิค, HR/เอกสาร และธุรกิจ/ผลิตภัณฑ์ไว้นอก `src/agenttree/` ทั้งหมดใช้ SDK เดียวกันและข้อมูลสังเคราะห์ โดยกรณี IT จะเรียก `FunctionTool` เพิ่มด้วย
-
-## การประเมินผล
-
-รันสถานการณ์ที่ให้ผลแน่นอนหกรายการและสร้าง JSON ที่พร้อมใช้ในรายงาน:
-
-```sh
-python evaluation/run_evaluation.py
-```
-
-ตัวรันวัดเงื่อนไขด้านการนำกลับมาใช้ซ้ำ การต่อยอด การกำหนดเส้นทาง ความเป็นอิสระจาก provider ความสามารถในการติดตาม และการเชื่อมต่อเครื่องมืออย่างชัดเจน จากนั้นเขียนผลไปยัง `evaluation/results.json` และจะทดสอบความเทียบเท่ากับ LangGraph หากติดตั้งไว้ ดู [การประเมินผล](docs/evaluation.md) และ [รายละเอียดวิธีการ](evaluation/README.md) แผนที่ข้อเท็จจริงระหว่างการพัฒนากับหลักฐานอยู่ใน [ขอบเขตที่ครอบคลุม](docs/scope-coverage.md)
-
-## ข้อผิดพลาดและความล้มเหลวของลำดับงาน
-
-การกำหนดค่าที่ไม่ถูกต้อง dependency/binding ที่ขาดหาย การตัดสินใจจาก provider ที่มีรูปแบบผิด และความล้มเหลวของแบ็กเอนด์หรือ transport จะยก exception แบบมีชนิด ส่วนผลลัพธ์ของลำดับงานที่คาดหมาย เช่น ไม่พบ Manager ที่ตรง ไม่มีงานสำหรับ Specialist การตรวจทานเป็น FAIL หรือใช้จำนวนการแก้ไขครบแล้ว จะส่งคืน `FinalResult` แบบมีโครงสร้างและไม่สำเร็จเมื่อ contract ของลำดับงานรองรับกรณีนั้น ดู [ข้อผิดพลาด](docs/errors.md)
-
-## ข้อจำกัดปัจจุบัน
-
-AgentTree มี API หลักแบบซิงโครนัสและมี runtime สำหรับงานพื้นหลังพร้อม SQLite persistence แต่ยังไม่มีโปรโตคอล A2A, การประมวลผลแบบกระจาย, provider fallback/การกำหนดเส้นทางตามต้นทุน, Web API หรือ GUI การวางแผนใช้เครื่องมืออาศัยการตอบกลับแบบ tool calling ของ provider และการกำหนดสิทธิ์จากแอปพลิเคชัน การประเมินผลแสดงพฤติกรรมซอฟต์แวร์ภายใต้ชุดข้อมูลที่ให้ผลแน่นอน ไม่ได้ยืนยันความฉลาดของโมเดล ความถูกต้องในทุกโดเมน ความสามารถในการปรับขนาด หรือความน่าเชื่อถือระดับ production
-
-โครงการยังไม่ได้เลือกหรือประกาศสัญญาอนุญาตโอเพนซอร์ส ดังนั้น repository นี้ยังไม่ได้ให้สิทธิ์ใช้งาน แก้ไข หรือแจกจ่าย ควรเลือกและเพิ่มสัญญาอนุญาตก่อนเผยแพร่สู่สาธารณะ
-
-## การพัฒนาและการทดสอบ
-
-```sh
-python -m venv .venv
-python -m pip install -e ".[dev]"
 python -m pytest -q
-python -m compileall -q src tests examples evaluation
-python -m build
 ```
 
-การทดสอบให้ผลแน่นอนและไม่เรียก provider จริง การทดสอบการเชื่อมต่อ MCP ใช้ fixture แบบ stdio ภายในเครื่องหรือ loopback ผลลัพธ์ `build/`, `dist/`, egg-info, cache, virtual environment, ข้อมูลรับรอง และผล coverage ที่สร้างขึ้นจะถูก ignore ดู [CONTRIBUTING.md](CONTRIBUTING.md) และ [CHANGELOG.md](CHANGELOG.md)
+## Thesis Baseline
 
-# Phase 7 structured artifacts and streams
+Frozen runtime baseline คือ annotated tag **`thesis-baseline-v0.1`** ที่ commit **`f01856b99a079c01e00c60988d3657819c95a188`** ดู tag ใน [GitHub repository](https://github.com/FlukeNoppanan/Agenttree/tree/thesis-baseline-v0.1)
 
-Execution-owned artifact references, durable event cursors, and opt-in provider
-streaming are documented in [artifacts and streaming](docs/artifacts-and-streaming.md).
-Artifact file operations are declarations; AgentTree does not apply them.
+ผลตรวจ runtime ที่ freeze: **729 tests passed, 5 existing skips** ตัวเลขนี้เป็นผลตรวจ historical baseline ไม่ใช่การรับรอง runtime ใหม่จากการแก้ README
+
+Core branch HEAD อาจใหม่กว่า tag เพราะมี Thai README documentation commit แต่ runtime source ยังคงตรงกับ frozen baseline ไม่สร้าง Core `thesis-baseline-v0.1.1` สำหรับการเปลี่ยนเอกสาร
+
+## สถานะและข้อจำกัด
+
+เป็น alpha research framework ไม่ใช่ enterprise production-ready system ความถูกต้องของ output ยังขึ้นกับ Provider/Model, policies, Tools และการตรวจสอบของ application ที่นำไปใช้
+
+ยังไม่ได้ implement **Learning, A2A, distributed execution, Human Approval หรือ chatbot/conversation memory** เป็นระบบพร้อมใช้งาน กรณีศึกษา Wazuh → AgentTree → Discord, Network Configuration และ Software Development อยู่ในแผนของโครงการ ยังไม่ได้เริ่มจาก README revision นี้ และไม่ใช่ domain logic ใน Core
+
+## License
+
+Repository ยังไม่มี LICENSE file ที่ประกาศ license เฉพาะ จึงไม่ระบุ license ที่เจ้าของโครงการยังไม่ได้เลือก
