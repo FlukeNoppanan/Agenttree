@@ -278,6 +278,17 @@ class ArtifactSession:
         return self.store.get(self.execution_id, artifact_id)
 
 
+from agenttree.tools.function import FunctionTool
+
+
+class ArtifactOutputTool(FunctionTool):
+    """Trusted built-in output Tool with a separately bounded content field.
+
+    Identity is by implementation, never by name or user-editable metadata.
+    ArtifactSession remains responsible for storage, intent and aggregate quotas.
+    """
+
+
 def create_artifact_tool():
     """Return an opt-in model callable for structured text artifacts.
 
@@ -303,9 +314,12 @@ def create_artifact_tool():
                              supersedes_artifact_id=supersedes_artifact_id)
         return {"artifact_id": ref.artifact_id, "sha256": ref.sha256}
 
-    return FunctionTool(
+    return ArtifactOutputTool(
         name="create_artifact", function=create_artifact,
-        description="Store a structured text, code, JSON, patch, file, or reference output. "
+        description="Store one output artifact. Put only the report/file body in content, "
+                    "not conversation history, Agent state or Execution Trace. "
+                    "For JSON, content must be a JSON-encoded string; for text use type=text. "
+                    "Use operation=none unless declaring a file intent. "
                     "A file path and operation describe intent only; no file is changed.",
         recovery_policy=ToolRecoveryPolicy.IDEMPOTENT,
     )

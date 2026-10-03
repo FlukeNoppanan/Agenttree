@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import asdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agenttree.agents import ManagerAgent
 from agenttree.models import ReviewDecision, ReviewResult, Subtask, Task
@@ -55,7 +55,10 @@ class ProviderManagerReviewer(_ProviderDecision, BaseManagerReviewer):
             raise ValueError("Task, Subtask, and Manager identities must match")
         if any(item.subtask_id != subtask.id for item in specialist_executions):
             raise ValueError("Specialist executions must belong to the Subtask")
-        data = self._generate(
+        def validate(data: dict[str, Any]) -> ReviewResult:
+            return review_output(data, manager.id)
+
+        return self._generate(
             "manager_review", REVIEW_PROMPT,
             "Review the specialist results for this subtask as its manager.",
             {"task": context, "subtask": asdict(subtask), "manager": {
@@ -63,8 +66,8 @@ class ProviderManagerReviewer(_ProviderDecision, BaseManagerReviewer):
                 "name": manager.name, "description": manager.description,
                 "capabilities": manager.capabilities,
             }, "specialist_executions": [asdict(item) for item in specialist_executions]},
+            validate=validate,
         )
-        return review_output(data, manager.id)
 
 
 class StaticManagerReviewer(BaseManagerReviewer):

@@ -165,6 +165,36 @@ def test_response_discards_reasoning_and_keeps_safe_tool_call_fields():
         assert "hidden" not in repr(result)
 
 
+@pytest.mark.parametrize("include_content", [False, True])
+def test_function_only_response_accepts_optional_content(include_content):
+    with server() as (url, state):
+        message = {"role": "assistant", "tool_calls": [{"id": "call-1", "type": "function",
+                   "function": {"name": "lookup", "arguments": "{}"}}]}
+        if include_content:
+            message["content"] = None
+        state["body"] = {"model": "m", "choices": [{"message": message,
+                         "finish_reason": "tool_calls"}]}
+        provider = OpenAICompatibleProvider(ProviderConfig("custom", model="m"), base_url=url)
+        result = provider.generate(ProviderRequest(prompt="x"))
+        assert result.content == ""
+        assert result.tool_calls[0]["function"]["name"] == "lookup"
+        assert result.finish_reason == "tool_calls"
+        assert len(state["calls"]) == 1
+
+
+@pytest.mark.parametrize("message", [
+    {}, {"role": "assistant"}, {"role": "assistant", "tool_calls": []},
+    None, [], "invalid",
+])
+def test_missing_content_without_function_calls_is_still_rejected(message):
+    with server() as (url, state):
+        state["body"] = {"model": "m", "choices": [{"message": message}]}
+        provider = OpenAICompatibleProvider(ProviderConfig("custom", model="m"), base_url=url)
+        with pytest.raises(MalformedProviderResponseError):
+            provider.generate(ProviderRequest(prompt="x"))
+        assert len(state["calls"]) == 1
+
+
 def test_custom_configuration_and_options_are_bounded():
     with server() as (url, state):
         for bad in ("http://example.com/v1", "https://user:pass@example.com/v1",

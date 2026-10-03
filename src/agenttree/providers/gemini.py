@@ -1,6 +1,7 @@
 """Optional synchronous GeminiProvider SDK adapter."""
 
 from typing import Any
+from copy import deepcopy
 from threading import RLock
 from time import monotonic
 import math
@@ -107,7 +108,15 @@ class GeminiProvider(BaseProvider):
             options["max_output_tokens"] = tokens
         contents: Any = prompt
         if request.tools:
-            options["tools"] = [{"function_declarations": list(request.tools)}]
+            # JSON Schema accepts additionalProperties used by Artifact/MCP Tools;
+            # the legacy OpenAPI Schema field rejects it before generation.
+            declarations = []
+            for tool in request.tools:
+                declaration = deepcopy(tool)
+                if "parameters" in declaration:
+                    declaration["parameters_json_schema"] = declaration.pop("parameters")
+                declarations.append(declaration)
+            options["tools"] = [{"function_declarations": declarations}]
             options["automatic_function_calling"] = {"disable": True}
             contents = [prompt]
             for turn in request.tool_history:
@@ -210,8 +219,8 @@ class GeminiProvider(BaseProvider):
                                 original_id = None
                             call_id = original_id or str(uuid4())
                             arguments = field(function, "args") or {}
-                            from json import dumps
-                            if len(dumps(arguments, default=str).encode("utf-8")) > 16_384:
+                            from agenttree.providers._adapter import tool_argument_bytes, tool_argument_limit
+                            if tool_argument_bytes(arguments) > tool_argument_limit(request, field(function, "name")):
                                 raise ProviderRuntimeError("Provider tool call exceeded size limit")
                             self._tool_original_ids[call_id] = original_id
                             self._tool_content_by_id[call_id] = native_content

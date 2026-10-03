@@ -216,7 +216,11 @@ class OpenAICompatibleProvider(BaseProvider):
         try:
             choice = data["choices"][0]
             message = choice["message"]
-            content = message["content"]
+            if not isinstance(message, dict):
+                raise TypeError
+            # Function-call-only messages may omit the optional text field.
+            # The checks below still reject responses without text or calls.
+            content = message.get("content")
             model_name = data.get("model", model)
             finish_reason = choice.get("finish_reason")
         except (KeyError, IndexError, TypeError):
@@ -297,7 +301,8 @@ class OpenAICompatibleProvider(BaseProvider):
                                 function = part.get("function") or {}
                                 current["name"] += function.get("name") or ""
                                 current["arguments"] += function.get("arguments") or ""
-                                if (len(current["arguments"].encode("utf-8")) > 16_384 or
+                                from agenttree.providers._adapter import tool_argument_limit
+                                if (len(current["arguments"].encode("utf-8")) > tool_argument_limit(request, current["name"]) or
                                         len(current["name"].encode("utf-8")) > 256 or
                                         len(current["id"].encode("utf-8")) > 256):
                                     raise MalformedProviderResponseError("Provider tool call exceeded size limit")

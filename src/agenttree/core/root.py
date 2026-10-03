@@ -38,7 +38,14 @@ class BaseRootPlanner(ABC):
 
 class ProviderRootPlanner(_ProviderDecision, BaseRootPlanner):
     def plan(self, task: Task, root: RootAgent) -> RootPlan:
-        data = self._generate(
+        def validate(data: dict[str, Any]) -> RootPlan:
+            delegate = required(data, "delegate")
+            if not isinstance(delegate, bool):
+                raise DecisionOutputError("delegate must be a boolean")
+            output = None if delegate else text_field(required(data, "direct_output"), "direct_output")
+            return RootPlan(delegate=delegate, direct_output=output)
+
+        return self._generate(
             "root_planning",
             'You are the Root. Decide if specialist delegation is necessary. '
             'For simple requests answer directly. For complex work delegate. '
@@ -47,12 +54,8 @@ class ProviderRootPlanner(_ProviderDecision, BaseRootPlanner):
             task.objective,
             {"task": {"id": task.id, "objective": task.objective,
                       "context": task.context.data}, "root": {"id": root.id}},
+            validate=validate,
         )
-        delegate = required(data, "delegate")
-        if not isinstance(delegate, bool):
-            raise DecisionOutputError("delegate must be a boolean")
-        output = None if delegate else text_field(required(data, "direct_output"), "direct_output")
-        return RootPlan(delegate=delegate, direct_output=output)
 
 
 class BaseRootSynthesizer(ABC):

@@ -63,7 +63,9 @@ def normalize_provider_error(error: Exception) -> ProviderRuntimeError:
         return ProviderRateLimitError("Provider rate limit exceeded", retry_after=retry_after)
     if status == 404:
         return ProviderModelNotFoundError("Provider model was not found")
-    if status in (408, 504) or isinstance(error, TimeoutError):
+    if (status in (408, 504) or isinstance(error, TimeoutError)
+            or any(base.__name__ == "TimeoutException" and base.__module__.startswith("httpx")
+                   for base in type(error).__mro__)):
         return ProviderTimeoutError("Provider request timed out")
     if (isinstance(status, int) and 500 <= status < 600) or isinstance(error, ConnectionError):
         return ProviderUnavailableError("Provider service is unavailable")

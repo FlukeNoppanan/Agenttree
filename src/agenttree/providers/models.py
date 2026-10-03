@@ -51,6 +51,10 @@ class ProviderRequest:
     tools: tuple[dict[str, Any], ...] = ()
     tool_choice: str | None = None
     tool_history: tuple[dict[str, Any], ...] = ()
+    # Host-controlled per-declaration transport bounds; never sent to the model.
+    # Unknown/ordinary calls retain the generic bound. ToolSession still validates
+    # authorization, schema, content and metadata before invocation.
+    tool_argument_limits: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

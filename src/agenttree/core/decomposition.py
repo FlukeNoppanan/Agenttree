@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import asdict
 import json
+from typing import Any
 
 from agenttree.agents import ManagerAgent
 from agenttree.models import Subtask, SubtaskTemplate, Task, TriageResult
@@ -89,7 +90,29 @@ class ProviderTaskDecomposer(_ProviderDecision, BaseTaskDecomposer):
         }
         if available is not None:
             request_context["available_specialist_capabilities"] = available
-        data = self._generate(
+        def validate(data: dict[str, Any]) -> tuple[Subtask, ...]:
+            items = required(data, "subtasks")
+            if not isinstance(items, list):
+                raise DecisionOutputError("subtasks must be a list")
+            subtasks: list[Subtask] = []
+            for index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    raise DecisionOutputError(f"subtasks[{index}] must be an object")
+                subtasks.append(Subtask(
+                    parent_task_id=task.id, manager_id=manager.id,
+                    objective=text_field(required(item, "objective"), "objective"),
+                    required_capabilities=capabilities_field(
+                        item,
+                        allowed_capabilities=available,
+                        capability_scope=(
+                            f"Specialist routing owned by Manager '{manager.id}'"
+                        ),
+                    ),
+                    metadata=metadata_field(item),
+                ))
+            return tuple(subtasks)
+
+        return self._generate(
             "decomposition",
             'Decompose the task into work appropriate for the supplied manager. '
             f'{capability_instruction} '
@@ -100,27 +123,8 @@ class ProviderTaskDecomposer(_ProviderDecision, BaseTaskDecomposer):
             'objective and a list of nonempty capability strings; metadata is optional.',
             "Create ordered subtasks for this manager.",
             request_context,
+            validate=validate,
         )
-        items = required(data, "subtasks")
-        if not isinstance(items, list):
-            raise DecisionOutputError("subtasks must be a list")
-        subtasks: list[Subtask] = []
-        for index, item in enumerate(items):
-            if not isinstance(item, dict):
-                raise DecisionOutputError(f"subtasks[{index}] must be an object")
-            subtasks.append(Subtask(
-                parent_task_id=task.id, manager_id=manager.id,
-                objective=text_field(required(item, "objective"), "objective"),
-                required_capabilities=capabilities_field(
-                    item,
-                    allowed_capabilities=available,
-                    capability_scope=(
-                        f"Specialist routing owned by Manager '{manager.id}'"
-                    ),
-                ),
-                metadata=metadata_field(item),
-            ))
-        return tuple(subtasks)
 
     def decompose_with_capabilities(
         self,

@@ -48,7 +48,10 @@ class ProviderFinalReviewer(_ProviderDecision, BaseFinalReviewer):
             raise TypeError("manager_review_result must be a TaskManagerReviewResult")
         if manager_review_result.task_id != task.id:
             raise ValueError("Manager review result must match the Task id")
-        data = self._generate(
+        def validate(data: dict[str, Any]) -> ReviewResult:
+            return review_output(data, root_agent.id)
+
+        return self._generate(
             "final_review", REVIEW_PROMPT,
             "Review overall task completion from the manager results as the Root.",
             {"task": context, "root": {
@@ -60,8 +63,8 @@ class ProviderFinalReviewer(_ProviderDecision, BaseFinalReviewer):
                 "manager_results": [asdict(item) for item in manager_review_result.manager_results],
                 "metadata": manager_review_result.metadata,
             }},
+            validate=validate,
         )
-        return review_output(data, root_agent.id)
 
 
 class StaticFinalReviewer(BaseFinalReviewer):

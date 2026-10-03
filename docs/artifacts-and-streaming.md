@@ -134,3 +134,31 @@ deltas there; Core provides no HTTP server. A future Coding Agenttree client
 can show live output and artifact previews, then ask its user to accept or
 reject a file intent before applying it locally. Core stops at production and
 never runs patch or Git apply.
+
+
+## Artifact Tool argument bounds
+
+Ordinary Tools retain `max_tool_argument_bytes` (16,384 bytes by default).
+Only the built-in Artifact Output implementation returned by
+`create_artifact_tool()` receives a separate `content` allowance; naming an
+ordinary Tool `create_artifact` or setting Tool metadata does not opt it in.
+The body is bounded by the existing `max_artifact_bytes` (1,000,000 UTF-8 bytes),
+while the JSON object excluding `content` remains bounded by
+`max_tool_argument_bytes`. Storage independently enforces content size, safe
+file intent, metadata, count and total artifact quotas.
+
+ToolSession supplies host-controlled per-declaration transport ceilings to
+Gemini and compatible streaming adapters through `ProviderRequest.tool_argument_limits`.
+They are not LLM schema fields and are not sent to provider SDKs. Unknown or
+unassigned call names retain the generic limit. The Artifact transport ceiling
+is `6 * max_artifact_bytes + max_tool_argument_bytes`, allowing the maximum
+JSON escaping expansion of a control byte. That ceiling never increases the
+validated content or non-content limits. Parsed native objects are measured
+with UTF-8 JSON (`ensure_ascii=False`); JSON strings are bounded before parsing.
+
+Send only the report/file body, not chat history, Agent state or Trace. For
+JSON artifacts send a JSON-encoded string; for reports use `type=text`,
+`operation=none`, and a MIME type without charset parameters. Successful Tools
+return an artifact ID and hash, not the body. Limit/validation rejection remains
+a failure and supplies static safe remediation to the model. Final SUCCESS,
+PARTIAL and FAILED semantics are unchanged.

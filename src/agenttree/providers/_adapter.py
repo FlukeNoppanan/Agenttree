@@ -108,3 +108,20 @@ def response(content: Any, model: Any, provider: str, usage: ProviderUsage | Non
         content=content, model=model, provider=provider, usage=usage,
         metadata={"request_metadata": deepcopy(request.metadata)}, raw_response=raw_data,
     )
+
+
+def tool_argument_bytes(arguments: Any) -> int:
+    """Bound native UTF-8 JSON, or the raw JSON text before parsing."""
+    try:
+        if isinstance(arguments, str):
+            return len(arguments.encode("utf-8"))
+        return len(json.dumps(arguments, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+    except (TypeError, ValueError, OverflowError, RecursionError, UnicodeError):
+        raise MalformedProviderResponseError("Provider Tool arguments are not valid JSON") from None
+
+
+def tool_argument_limit(request: ProviderRequest, name: str | None, default: int = 16_384) -> int:
+    limit = request.tool_argument_limits.get(name, default)
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ProviderConfigurationError("Invalid Tool argument byte limit")
+    return limit

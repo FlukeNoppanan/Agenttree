@@ -74,6 +74,15 @@ def _schema(tool: Any) -> dict[str, Any]:
             properties[parameter.name]["description"] = parameter.description
         if parameter.required:
             required.append(parameter.name)
+    from agenttree.core.artifacts import ArtifactOutputTool
+    if isinstance(tool, ArtifactOutputTool):
+        for name in ("content", "path", "media_type", "supersedes_artifact_id"):
+            properties[name]["type"] = ["string", "null"]
+        properties["content"]["description"] = "Only the artifact body. JSON must be a JSON-encoded string; omit unrelated context."
+        properties["media_type"]["description"] = "MIME type only, e.g. text/plain or application/json. Do not include charset parameters."
+        properties["operation"]["description"] = "Use none for report outputs. File intents create/modify/delete require a safe relative path."
+        properties["type"]["enum"] = ["text", "code", "json", "file", "patch", "reference"]
+        properties["operation"]["enum"] = ["none", "create", "modify", "delete"]
     return {"type": "object", "properties": properties, "required": required,
             "additionalProperties": tool.input_spec.accepts_var_keyword}
 
@@ -87,8 +96,12 @@ def _validate_schema(value: Any, schema: dict[str, Any], depth: int = 0) -> None
              "number": lambda x: isinstance(x, (int, float)) and not isinstance(x, bool),
              "boolean": lambda x: isinstance(x, bool), "object": lambda x: isinstance(x, dict),
              "array": lambda x: isinstance(x, list), "null": lambda x: x is None}
-    if expected is not None and (expected not in kinds or not kinds[expected](value)):
-        raise ValueError("Tool argument has invalid type")
+    if expected is not None:
+        allowed = expected if isinstance(expected, list) else [expected]
+        if (not allowed or any(not isinstance(kind, str) or kind not in kinds for kind in allowed)):
+            raise ValueError("Unsupported tool argument schema")
+        if not any(kinds[kind](value) for kind in allowed):
+            raise ValueError("Tool argument has invalid type")
     if "enum" in schema and value not in schema["enum"]:
         raise ValueError("Tool argument is outside allowed values")
     if isinstance(value, str):
@@ -148,6 +161,34 @@ def _validate(tool: Any, arguments: Any, limit: int) -> dict[str, Any]:
         raise ValueError("Tool arguments must be JSON compatible") from None
     _validate_schema(arguments, _schema(tool))
     return deepcopy(arguments)
+
+
+class ArtifactArgumentLimitError(ValueError):
+    """Safe actionable boundary feedback, without argument content."""
+
+
+def _argument_limit(tool: Any, config: AgentTreeConfig) -> int:
+    from agenttree.core.artifacts import ArtifactOutputTool
+    if isinstance(tool, ArtifactOutputTool):
+        # JSON escaping can expand one content byte to six (e.g. a control byte).
+        # This is a transport ceiling, not permission for larger content/metadata.
+        return 6 * config.max_artifact_bytes + config.max_tool_argument_bytes
+    return config.max_tool_argument_bytes
+
+
+def _validate_arguments(tool: Any, arguments: Any, config: AgentTreeConfig) -> dict[str, Any]:
+    prepared = _validate(tool, arguments, _argument_limit(tool, config))
+    from agenttree.core.artifacts import ArtifactOutputTool
+    if isinstance(tool, ArtifactOutputTool):
+        content = prepared.get("content")
+        if isinstance(content, str) and len(content.encode("utf-8")) > config.max_artifact_bytes:
+            raise ArtifactArgumentLimitError(
+                f"Artifact content exceeds {config.max_artifact_bytes} UTF-8 bytes; shorten the body or split it into bounded artifacts.")
+        metadata = {key: value for key, value in prepared.items() if key != "content"}
+        if _json_bytes(metadata) > config.max_tool_argument_bytes:
+            raise ArtifactArgumentLimitError(
+                f"Artifact non-content arguments exceed {config.max_tool_argument_bytes} UTF-8 bytes; remove unrelated context.")
+    return prepared
 
 
 class ToolSession:
@@ -305,7 +346,9 @@ class ToolSession:
         if not tool.enabled:
             return self._deny(call, tool.id, "ToolDisabled")
         try:
-            arguments = _validate(tool, call.arguments, self.config.max_tool_argument_bytes)
+            arguments = _validate_arguments(tool, call.arguments, self.config)
+        except ArtifactArgumentLimitError as error:
+            return replace(self._deny(call, tool.id, "ToolArgumentValidationError"), error=str(error))
         except ValueError:
             return self._deny(call, tool.id, "ToolArgumentValidationError")
         self.metrics["executed"] += 1
@@ -348,7 +391,14 @@ class ToolSession:
             return self._error(call, tool.id, "ToolExecutionError", duration)
         if not result.success:
             self._event(call, "failed", tool.id, duration)
-            return self._error(call, tool.id, "ToolExecutionError", duration)
+            from agenttree.core.artifacts import ArtifactOutputTool
+            failed = self._error(call, tool.id, "ToolExecutionError", duration)
+            if isinstance(tool, ArtifactOutputTool) and result.metadata.get("error_type") == "ArtifactValidationError":
+                # Static remediation only; never forward arbitrary Tool exception text.
+                return replace(failed, error="Artifact output rejected. Use a supported type, valid JSON text for JSON, "
+                               "operation=none for reports, and a MIME type without charset parameters. "
+                               "Keep the body within the configured artifact byte limit.")
+            return failed
         try:
             output = _safe_value(result.output)
             if _json_bytes(output) > self.config.max_tool_result_bytes:
@@ -395,7 +445,10 @@ class ToolSession:
                 raise ProviderConfigurationError("Cancelled collaboration response")
             current = replace(request, tools=definitions,
                               tool_choice="auto" if definitions else None,
-                              tool_history=history)
+                              tool_history=history,
+                              tool_argument_limits={definition["name"]: _argument_limit(
+                                  self.registry.get_by_name(definition["name"]), self.config)
+                                  for definition in definitions})
             from agenttree.core.operation_journal import current_journal
             journal = current_journal()
             response = (journal.run(journal.next_key("provider"), "provider.generate",
@@ -436,9 +489,11 @@ class ToolSession:
                 call = self._call(agent_id, item)
                 safe_arguments: Any = call.arguments
                 try:
-                    if _json_bytes(safe_arguments) > self.config.max_tool_argument_bytes:
+                    tool = self.registry.get_by_name(call.tool_name)
+                    from agenttree.providers._adapter import tool_argument_bytes
+                    if tool_argument_bytes(safe_arguments) > _argument_limit(tool, self.config):
                         safe_arguments = {}
-                except (TypeError, ValueError, OverflowError, RecursionError):
+                except (KeyError, TypeError, ValueError, OverflowError, RecursionError):
                     safe_arguments = {}
                 if isinstance(safe_arguments, str):
                     try:
@@ -451,7 +506,7 @@ class ToolSession:
                 check_execution()
                 results.append({"call_id": call.call_id, "name": call.tool_name,
                                 "success": result.success, "output": result.output,
-                                "error": result.error_type})
+                                "error": result.error or result.error_type})
             history += ({"calls": calls, "results": results},)
         raise AssertionError("Tool loop did not terminate")
 
@@ -514,8 +569,10 @@ def _provider_response(provider: BaseProvider, request: ProviderRequest,
             if len(chunk.response.content.encode("utf-8")) > max_bytes:
                 raise ValueError("provider stream exceeded response limit")
             for call in chunk.response.tool_calls:
-                arguments = call.get("function", {}).get("arguments", "")
-                if len(str(arguments).encode("utf-8")) > max_tool_bytes:
+                function = call.get("function", call)
+                arguments = function.get("arguments", "")
+                from agenttree.providers._adapter import tool_argument_bytes, tool_argument_limit
+                if tool_argument_bytes(arguments) > tool_argument_limit(request, function.get("name"), max_tool_bytes):
                     raise ValueError("provider stream exceeded tool argument limit")
             final = chunk.response
     if final is None:

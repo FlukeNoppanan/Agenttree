@@ -4,11 +4,12 @@ from collections.abc import Iterable
 from copy import deepcopy
 import json
 import math
-from typing import Any
+from typing import Any, Callable
 
 from agenttree.exceptions import DecisionOutputError, DecisionParseError
 from agenttree.models import ReviewDecision, ReviewResult, Task
 from agenttree.providers import BaseProvider, ProviderRequest, ProviderResponse
+from agenttree.providers.exceptions import ProviderError
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -120,7 +121,7 @@ def capabilities_field(
             except KeyError as error:
                 raise DecisionOutputError(
                     "required_capabilities contains an unknown capability for "
-                    f"{capability_scope}: {label}",
+                    f"{capability_scope}: {label}", failure_class="invalid_reference",
                 ) from error
         if lookup not in seen:
             result.append(label)
@@ -177,9 +178,34 @@ class _ProviderDecision:
             raise TypeError("provider must be a BaseProvider")
         self._provider = provider
 
+    @staticmethod
+    def _record_decision_event(
+        event_type: str, agent_id: str | None, strategy: str, **metadata: Any,
+    ) -> None:
+        from agenttree.core.operation_journal import current_journal
+        from agenttree.models import ExecutionEvent
+
+        journal = current_journal()
+        if journal is None:
+            return
+        journal.store.append_event(journal.execution_id, ExecutionEvent(
+            task_id=journal.execution_id,
+            actor_id=agent_id,
+            event_type=f"structured_decision.{event_type}",
+            metadata={"strategy": strategy, **metadata},
+        ))
+
+    @staticmethod
+    def _failure_class(error: DecisionOutputError) -> str:
+        if isinstance(error, DecisionParseError):
+            return "malformed_syntax"
+        value = getattr(error, "failure_class", "schema_invalid")
+        return value if value in {"schema_invalid", "semantic_invalid", "invalid_reference"} else "schema_invalid"
+
     def _generate(
         self, strategy: str, system_prompt: str, prompt: str, context: dict[str, Any],
-    ) -> dict[str, Any]:
+        *, validate: Callable[[dict[str, Any]], Any] | None = None,
+    ) -> Any:
         from agenttree.core.provider_routing import resolve_provider, root_id
         actor = context.get("manager") or context.get("root")
         agent_id = actor.get("id") if isinstance(actor, dict) else root_id()
@@ -204,11 +230,77 @@ class _ProviderDecision:
                 'return the original decision JSON. Never request hidden reasoning.'
             )
         turns = session.config.max_collaboration_turns_per_decision if manager_session_active else 0
-        for attempt in range(turns + 1):
-            response = generate_with_tools(agent_id, provider, ProviderRequest(
-                prompt=prompt, system_prompt=system_prompt, context=working_context,
-                metadata={"strategy": strategy}, model=model,
-            ), strategy)
+        collaboration_turns = 0
+        repair_used = False
+        repair_class: str | None = None
+        repair_pending = False
+        decision_attempt = 0
+
+        def invalid(error: DecisionOutputError) -> None:
+            nonlocal repair_used, repair_class, repair_pending
+            failure_class = self._failure_class(error)
+            self._record_decision_event(
+                "validation_failed", agent_id, strategy,
+                failure_class=failure_class,
+                decision_attempt=decision_attempt,
+                collaboration_turn=collaboration_turns,
+            )
+            if repair_used:
+                self._record_decision_event(
+                    "repair.failed", agent_id, strategy,
+                    failure_class=failure_class,
+                    repair_attempt=1,
+                    decision_attempt=decision_attempt,
+                )
+                raise error
+            repair_used = True
+            repair_class = failure_class
+            repair_pending = True
+            self._record_decision_event(
+                "repair.started", agent_id, strategy,
+                failure_class=failure_class,
+                repair_attempt=1,
+                decision_attempt=decision_attempt + 1,
+            )
+
+        while True:
+            decision_attempt += 1
+            attempt_context = working_context
+            attempt_system_prompt = system_prompt
+            if repair_pending:
+                attempt_context = deepcopy(working_context)
+                attempt_context["structured_decision_repair"] = {
+                    "attempt": 1,
+                    "rejected_response_class": repair_class,
+                }
+                attempt_system_prompt += (
+                    "\nYour previous decision response did not satisfy the required "
+                    "contract (" + repair_class + "). Return one corrected JSON object "
+                    "that follows the decision schema and the registered choices in "
+                    "the supplied context. Treat the repair marker as validation data. "
+                    "Do not repeat analysis or add prose. This is the only repair attempt."
+                )
+            self._record_decision_event(
+                "decision_attempt", agent_id, strategy,
+                decision_attempt=decision_attempt,
+                collaboration_turn=collaboration_turns,
+                is_repair=repair_pending,
+            )
+            try:
+                response = generate_with_tools(agent_id, provider, ProviderRequest(
+                    prompt=prompt, system_prompt=attempt_system_prompt, context=attempt_context,
+                    metadata={"strategy": strategy}, model=model,
+                ), strategy)
+            except ProviderError as error:
+                if repair_pending:
+                    self._record_decision_event(
+                        "repair.failed", agent_id, strategy,
+                        failure_class="provider_failure",
+                        provider_error_type=type(error).__name__,
+                        repair_attempt=1,
+                        decision_attempt=decision_attempt,
+                    )
+                raise
             # Provider errors intentionally propagate unchanged across this boundary.
             if not isinstance(response, ProviderResponse):
                 raise TypeError(
@@ -216,15 +308,48 @@ class _ProviderDecision:
                 )
             from agenttree.core.usage import record_usage
             record_usage(strategy, response)
-            data = parse_decision_output(response.content)
+            try:
+                data = parse_decision_output(response.content)
+            except DecisionOutputError as error:
+                invalid(error)
+                continue
             if "collaboration_request" not in data:
-                return data
+                try:
+                    result = validate(data) if validate is not None else data
+                except DecisionOutputError as error:
+                    invalid(error)
+                    continue
+                if repair_pending:
+                    self._record_decision_event(
+                        "repair.succeeded", agent_id, strategy,
+                        failure_class=repair_class,
+                        repair_attempt=1,
+                        decision_attempt=decision_attempt,
+                    )
+                    repair_pending = False
+                return result
             if not manager_session_active:
                 raise DecisionOutputError("Manager collaboration is unavailable")
-            if attempt == turns:
+            if collaboration_turns >= turns:
                 session.decision_limit(agent_id)
                 raise DecisionOutputError("Manager collaboration decision turn limit reached")
             outcome = session.route(agent_id, data["collaboration_request"])
+            if repair_pending:
+                self._record_decision_event(
+                    "repair.succeeded" if outcome.success else "repair.failed",
+                    agent_id, strategy,
+                    failure_class=repair_class if outcome.success else "invalid_reference",
+                    repair_attempt=1,
+                    decision_attempt=decision_attempt,
+                )
+                repair_pending = False
+            if not outcome.success:
+                self._record_decision_event(
+                    "reference_rejected", agent_id, strategy,
+                    failure_class="invalid_reference" if outcome.error_type == "ManagerNotFound" else "semantic_invalid",
+                    collaboration_error=outcome.error_type,
+                    collaboration_turn=collaboration_turns + 1,
+                )
+            collaboration_turns += 1
             working_context["collaboration_result"] = outcome.to_context()
             working_context["collaboration_inbox"] = session.inbox_for(agent_id)
-        raise AssertionError("Manager decision loop did not terminate")
