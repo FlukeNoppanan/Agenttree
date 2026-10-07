@@ -129,8 +129,9 @@ def _pid_alive(pid: int | None) -> bool:
     return True
 
 
-def _lifecycle(execution_id: str, label: str) -> ExecutionEvent:
-    return ExecutionEvent(task_id=execution_id, event_type=f"execution.{label}")
+def _lifecycle(execution_id: str, label: str, execution_mode: str | None = None) -> ExecutionEvent:
+    return ExecutionEvent(task_id=execution_id, event_type=f"execution.{label}",
+                          metadata={"execution_mode": execution_mode} if execution_mode else {})
 
 
 def _with_runtime_trace(result: FinalResult, events: list[ExecutionEvent]) -> FinalResult:
@@ -239,10 +240,10 @@ class ExecutionRuntime:
                     input_json=dumps(task, max_bytes=self.max_record_bytes),
                     created_at=now, updated_at=now,
                     deadline_at=now + timedelta(seconds=timeout) if timeout else None,
-                    events_json=dumps([_lifecycle(task.id, "queued")]),
+                    events_json=dumps([_lifecycle(task.id, "queued", task.execution_mode.value)]),
                 )
                 self.store.create(record)
-                self.store.append_event(task.id, _lifecycle(task.id, "queued"))
+                self.store.append_event(task.id, _lifecycle(task.id, "queued", task.execution_mode.value))
                 signal = Event()
                 self._controls[task.id] = signal
                 from agenttree.core.live_output import LiveOutputHub
@@ -518,11 +519,14 @@ class ExecutionRuntime:
             return
         watchdog_done = Event()
         try:
+            task = loads(record.input_json, max_bytes=self.max_record_bytes)
+            if not isinstance(task, Task) or task.id != execution_id:
+                raise ExecutionDataError("Durable input is invalid")
             if record.state is ExecutionState.QUEUED:
                 record = self.store.transition(execution_id, record.version,
                                                ExecutionState.RUNNING, owner_pid=os.getpid(),
                                                owner_id=self.owner_id)
-                self.store.append_event(execution_id, _lifecycle(execution_id, "started"))
+                self.store.append_event(execution_id, _lifecycle(execution_id, "started", task.execution_mode.value))
             if record.state is not ExecutionState.RUNNING:
                 return
             runtime_events = loads(record.events_json)
@@ -530,7 +534,7 @@ class ExecutionRuntime:
                 runtime_events.append(_lifecycle(execution_id, "recovery.started"))
                 runtime_events.append(_lifecycle(execution_id, "recovery.completed"))
             else:
-                runtime_events.append(_lifecycle(execution_id, "started"))
+                runtime_events.append(_lifecycle(execution_id, "started", task.execution_mode.value))
             def watch() -> None:
                 while not watchdog_done.wait(0.02):
                     current = self.store.get(execution_id)
@@ -546,9 +550,6 @@ class ExecutionRuntime:
             Thread(target=watch, daemon=True, name="agenttree-execution-watchdog").start()
             checkpoint = self.store.load_checkpoint(execution_id)
             resumed = checkpoint is not None
-            task = loads(record.input_json, max_bytes=self.max_record_bytes)
-            if not isinstance(task, Task) or task.id != execution_id:
-                raise ExecutionDataError("Durable input is invalid")
             control = ExecutionControl(signal, record.deadline_at)
             journal = OperationJournal(self.store, execution_id)
             if resumed:

@@ -533,15 +533,15 @@ def generate_with_tools(agent_id: str | None, provider: BaseProvider,
         journal = current_journal()
         response = (journal.run(journal.next_key("provider"), "provider.generate",
                                 (agent_id, provider.name, request),
-                                lambda: _provider_response(provider, request, False), agent_id=agent_id)
-                    if journal is not None else provider.generate(request))
+                                lambda: _provider_response(provider, request, False, agent_id=agent_id, strategy=strategy), agent_id=agent_id)
+                    if journal is not None else _provider_response(provider, request, False, agent_id=agent_id, strategy=strategy))
     else:
         response = session.generate(agent_id, provider, request, strategy)
     check_execution()
     return response
 
 
-def _provider_response(provider: BaseProvider, request: ProviderRequest,
+def _raw_provider_response(provider: BaseProvider, request: ProviderRequest,
                        streaming: bool, *, agent_id: str | None = None,
                        strategy: str = "internal", max_bytes: int = 1_000_000,
                        max_tool_bytes: int = 16_384) -> ProviderResponse:
@@ -578,3 +578,14 @@ def _provider_response(provider: BaseProvider, request: ProviderRequest,
     if final is None:
         raise ValueError("provider stream ended without a final response")
     return final
+
+
+def _provider_response(provider: BaseProvider, request: ProviderRequest,
+                       streaming: bool, *, agent_id: str | None = None,
+                       strategy: str = "internal", max_bytes: int = 1_000_000,
+                       max_tool_bytes: int = 16_384) -> ProviderResponse:
+    from agenttree.providers.traffic import governed, traffic_context
+    with traffic_context(agent_id=agent_id, strategy=strategy):
+        return _raw_provider_response(governed(provider), request, streaming,
+            agent_id=agent_id, strategy=strategy, max_bytes=max_bytes,
+            max_tool_bytes=max_tool_bytes)

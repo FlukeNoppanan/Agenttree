@@ -40,7 +40,7 @@ class GeminiProvider(BaseProvider):
         super().__init__(config)
         if client is None:
             kwargs = {"api_key": api_key} if api_key is not None else {}
-            kwargs["http_options"] = {"timeout": max(1, int(timeout * 1000))}
+            kwargs["http_options"] = {"timeout": max(1, int(timeout * 1000)), "retry_options": {"attempts": 1}}
             client = create_client("google.genai", "Client", "gemini", **kwargs)
         self._client = client
         self._keep_raw = keep_raw_response
@@ -173,6 +173,13 @@ class GeminiProvider(BaseProvider):
                 text_content = field(raw, "text")
             except (ValueError, AttributeError):
                 text_content = None
+            # SDK .text convenience properties vary; use explicit non-thought
+            # answer parts if it is absent. Thought text never becomes output.
+            parts = field(field(candidates[0], "content"), "parts") if candidates else None
+            if parts is not None:
+                text_content = "".join(field(part, "text") for part in parts
+                                       if field(part, "thought") is not True
+                                       and isinstance(field(part, "text"), str)) or None
             if calls:
                 native_content = field(candidates[0], "content")
                 for call in calls:

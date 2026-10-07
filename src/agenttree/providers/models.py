@@ -69,6 +69,7 @@ class ProviderResponse:
     raw_response: Any = None
     finish_reason: str | None = None
     tool_calls: tuple[dict[str, Any], ...] = ()
+    structured_content: dict[str, Any] | str | None = None
 
 
 @dataclass(frozen=True)

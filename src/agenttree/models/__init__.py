@@ -4,7 +4,7 @@ from agenttree.models.execution import ExecutionEvent, ExecutionTrace
 from agenttree.models.result import AgentResult, ReviewDecision, ReviewResult
 from agenttree.models.state import WorkflowPhase, WorkflowState
 from agenttree.models.subtask import Subtask, SubtaskTemplate
-from agenttree.models.task import Task, TaskContext, TaskStatus
+from agenttree.models.task import ExecutionMode, Task, TaskContext, TaskStatus
 from agenttree.models.triage import TriageResult
 from agenttree.models.collaboration import (
     ManagerMessage, ManagerMessageType, ManagerMessageStatus,
@@ -16,6 +16,7 @@ __all__ = [
     "Task",
     "TaskContext",
     "TaskStatus",
+    "ExecutionMode",
     "AgentResult",
     "ReviewResult",
     "ReviewDecision",

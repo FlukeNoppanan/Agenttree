@@ -7,6 +7,13 @@ from typing import Any
 from uuid import uuid4
 
 
+class ExecutionMode(str, Enum):
+    """Per-task policy; Fast preserves autonomous Root delegation."""
+
+    FAST = "fast"
+    DEEP = "deep"
+
+
 class TaskStatus(str, Enum):
     """Lifecycle labels; transitions are not enforced by the data model."""
 
@@ -37,3 +44,7 @@ class Task:
     metadata: dict[str, Any] = field(default_factory=dict)
     status: TaskStatus = TaskStatus.PENDING
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    execution_mode: ExecutionMode = ExecutionMode.FAST
+
+    def __post_init__(self) -> None:
+        self.execution_mode = ExecutionMode(self.execution_mode)

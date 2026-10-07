@@ -87,7 +87,7 @@ def test_json_object_and_conservative_fences(wrapper: str) -> None:
 
 
 @pytest.mark.parametrize("content", [
-    "", "not JSON", '{"broken":', 'Here is JSON: {}', '```python\n{}\n```',
+    "", "not JSON", '{"broken":', 'Here are alternatives: {} or {}', '```python\n{}\n```',
     '```json\n{}\n```\nextra', '{}\n{}', '{"x":1,"x":2}',
     '{"value":NaN}', '{"value":Infinity}', '{"value":1e999}',
 ])

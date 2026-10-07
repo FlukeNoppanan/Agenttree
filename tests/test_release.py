@@ -71,6 +71,7 @@ def test_root_exports_are_curated_and_backward_compatible() -> None:
         "ManagerAgent",
         "SpecialistAgent",
         "Task",
+        "ExecutionMode",
     ]
 
 

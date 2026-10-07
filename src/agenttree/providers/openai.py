@@ -25,6 +25,7 @@ class OpenAIProvider(BaseProvider):
         super().__init__(config)
         if client is None:
             kwargs = {"api_key": api_key} if api_key is not None else {}
+            kwargs["max_retries"] = 0
             if base_url is not None:
                 kwargs["base_url"] = base_url
             client = create_client("openai", "OpenAI", "openai", **kwargs)

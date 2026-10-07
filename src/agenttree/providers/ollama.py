@@ -5,7 +5,7 @@ from typing import Any
 from agenttree.providers.base import BaseProvider
 from agenttree.providers._adapter import create_client, field, prepare, response, validate_config
 from agenttree.providers.exceptions import ProviderConfigurationError, ProviderRuntimeError, normalize_provider_error
-from agenttree.providers.models import ProviderConfig, ProviderRequest, ProviderResponse, ProviderUsage
+from agenttree.providers.models import ProviderConfig, ProviderRequest, ProviderResponse, ProviderUsage, ProviderCapabilities
 
 
 class OllamaProvider(BaseProvider):
@@ -29,12 +29,32 @@ class OllamaProvider(BaseProvider):
         self._client = client
         self._keep_raw = keep_raw_response
 
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(chat=True, structured_output=True, streaming=False, tool_calling=False)
+
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         """Translate a generic request and normalize SDK output and failures."""
         model, prompt, temperature, tokens = prepare(self.config, request)
-        if request.provider_options or request.response_format is not None or request.timeout is not None:
+        if request.provider_options or request.timeout is not None:
             raise ProviderConfigurationError("Ollama adapter does not support these optional request fields")
         kwargs: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
+        if request.response_format is not None:
+            if not isinstance(request.response_format, dict):
+                raise ProviderConfigurationError("Structured response format must be an object")
+            if request.response_format.get("type") == "json_object":
+                kwargs["format"] = "json"
+            elif request.response_format.get("type") == "json_schema":
+                specification = request.response_format.get("json_schema")
+                schema = specification.get("schema") if isinstance(specification, dict) else None
+                if not isinstance(schema, dict):
+                    raise ProviderConfigurationError("Structured output requires a JSON schema object")
+                kwargs["format"] = schema
+            else:
+                raise ProviderConfigurationError("Unsupported structured response format")
+            # Control decisions contain no private reasoning. Keep thinking out
+            # of the answer channel and its output budget, consistently across models.
+            kwargs["think"] = False
         if request.system_prompt is not None:
             kwargs["system"] = request.system_prompt
         options: dict[str, Any] = {}

@@ -219,15 +219,17 @@ def test_sdk_construction_parameters_no_generation(adapter: type, monkeypatch: p
         else {"api_key": "fake-key"}
     )
     provider = adapter(ProviderConfig(provider_name="fixture", model="m"), **options)
-    expected = ({**options, "http_options": {"timeout": 15000}}
+    if adapter is OpenAIProvider:
+        options = {**options, "max_retries": 0}
+    expected = ({**options, "http_options": {"timeout": 15000, "retry_options": {"attempts": 1}}}
                 if adapter is GeminiProvider else options)
     assert constructed == [expected]
     assert fake.calls == []
     assert "api_key" not in vars(provider.config)
     constructed.clear()
     adapter(ProviderConfig(provider_name="environment", model="m"))
-    assert constructed == ([{"http_options": {"timeout": 15000}}]
-                           if adapter is GeminiProvider else [{}])
+    assert constructed == ([{"http_options": {"timeout": 15000, "retry_options": {"attempts": 1}}}]
+                           if adapter is GeminiProvider else [{"max_retries": 0}] if adapter is OpenAIProvider else [{}])
 
 
 def test_three_specialists_use_external_provider_bindings() -> None:
@@ -290,7 +292,7 @@ def test_openai_custom_base_url_and_constructor_failure(monkeypatch: pytest.Monk
         ProviderConfig(provider_name="custom", model="m"),
         api_key="fake", base_url="https://example.invalid/v1",
     )
-    assert seen == [{"api_key": "fake", "base_url": "https://example.invalid/v1"}]
+    assert seen == [{"api_key": "fake", "base_url": "https://example.invalid/v1", "max_retries": 0}]
     error = ValueError("fake missing credentials")
 
     def broken(**kwargs: Any) -> None:

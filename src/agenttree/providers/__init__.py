@@ -11,7 +11,7 @@ from agenttree.providers.cerebras import CerebrasProvider
 from agenttree.providers.factory import create_provider
 from agenttree.providers.exceptions import (
     ProviderError, ProviderConfigurationError, ProviderDependencyError, ProviderRuntimeError,
-    ProviderAuthenticationError, ProviderRateLimitError, ProviderUnavailableError,
+    ProviderAuthenticationError, ProviderRateLimitError, ProviderUnavailableError, ProviderNetworkError,
     ProviderTimeoutError, ProviderInvalidRequestError, ProviderModelNotFoundError,
     MalformedProviderResponseError,
 )
@@ -26,7 +26,11 @@ from agenttree.providers.models import (
 )
 from agenttree.providers.registry import ProviderRegistry
 
+from agenttree.providers.traffic_failure import ProviderFailure, RateLimitSignal
+from agenttree.providers.traffic import GovernedProvider, ProviderRequestGovernor, traffic_context
+
 __all__ = [
+    "ProviderFailure", "RateLimitSignal", "GovernedProvider", "ProviderRequestGovernor", "traffic_context", "ProviderNetworkError",
     "OpenAIProvider", "GeminiProvider", "OllamaProvider",
     "OpenAICompatibleProvider", "GroqProvider", "OpenRouterProvider",
     "CerebrasProvider", "create_provider",

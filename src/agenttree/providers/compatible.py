@@ -14,10 +14,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from agenttree.providers._adapter import prepare, validate_config
+from agenttree.providers._adapter import prepare, validate_config, final_content
 from agenttree.providers.base import BaseProvider
 from agenttree.providers.exceptions import (
-    MalformedProviderResponseError, ProviderConfigurationError,
+    MalformedProviderResponseError, ProviderConfigurationError, ProviderInvalidRequestError,
     normalize_provider_error,
 )
 from agenttree.providers.models import (
@@ -144,6 +144,8 @@ class OpenAICompatibleProvider(BaseProvider):
         try:
             with self._opener.open(request, timeout=timeout or self._timeout) as response:
                 raw = response.read(2_000_001)
+                from agenttree.providers.traffic_failure import safe_headers
+                traffic_headers = safe_headers(response.headers)
         except HTTPError as error:
             normalized = normalize_provider_error(error)
         except (URLError, TimeoutError, socket.timeout, OSError) as error:
@@ -158,6 +160,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 raise MalformedProviderResponseError("Provider returned invalid JSON") from None
             if not isinstance(parsed, dict):
                 raise MalformedProviderResponseError("Provider response must be an object")
+            parsed["_agenttree_traffic_headers"] = traffic_headers
             return parsed
         raise normalized
 
@@ -211,7 +214,17 @@ class OpenAICompatibleProvider(BaseProvider):
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         model, payload = self._chat_payload(request)
         started = monotonic()
-        data = self._json_request("/chat/completions", payload, timeout=request.timeout)
+        fallback = None
+        try:
+            data = self._json_request("/chat/completions", payload, timeout=request.timeout)
+        except ProviderInvalidRequestError as error:
+            # Exactly one retry, only when a structured API error identifies an
+            # optional unsupported feature. Keep model, provider and prompt.
+            fallback = error.unsupported_parameter
+            if fallback not in {"response_format", "temperature"} or fallback not in payload:
+                raise
+            payload.pop(fallback)
+            data = self._json_request("/chat/completions", payload, timeout=request.timeout)
         latency = round((monotonic() - started) * 1000, 2)
         try:
             choice = data["choices"][0]
@@ -220,14 +233,20 @@ class OpenAICompatibleProvider(BaseProvider):
                 raise TypeError
             # Function-call-only messages may omit the optional text field.
             # The checks below still reject responses without text or calls.
-            content = message.get("content")
+            content = final_content(message.get("content"))
             model_name = data.get("model", model)
             finish_reason = choice.get("finish_reason")
         except (KeyError, IndexError, TypeError):
             raise MalformedProviderResponseError("Provider chat response is malformed") from None
         tool_calls = _tool_calls(message.get("tool_calls"))
         if not isinstance(content, (str, type(None))) or (not tool_calls and not (content or "").strip()) or not isinstance(model_name, str):
-            raise MalformedProviderResponseError("Provider returned no text response")
+            error = MalformedProviderResponseError("Provider returned no final text response")
+            error.diagnostics = {
+                "response_received": True, "final_content_present": False,
+                "reasoning_present": bool(message.get("reasoning") or message.get("reasoning_content")),
+                "finish_reason": finish_reason if finish_reason in {"length", "stop", "content_filter"} else "unknown",
+            }
+            raise error
         usage_data = data.get("usage")
         usage = None
         if isinstance(usage_data, dict):
@@ -240,7 +259,11 @@ class OpenAICompatibleProvider(BaseProvider):
                                 model=model_name, usage=usage,
                                 finish_reason=finish_reason if isinstance(finish_reason, str) else None,
                                 tool_calls=tool_calls,
-                                metadata={"latency_ms": latency})
+                                metadata={"traffic_headers": data.get("_agenttree_traffic_headers", {}),
+                                          "latency_ms": latency, "request_feature_fallback": fallback,
+                                          "response_received": True,
+                                          "final_content_present": bool(content),
+                                          "reasoning_present": bool(message.get("reasoning") or message.get("reasoning_content"))})
 
     def generate_stream(self, request: ProviderRequest):
         if not self._streaming:
@@ -267,6 +290,8 @@ class OpenAICompatibleProvider(BaseProvider):
         done = False
         try:
             with self._opener.open(http_request, timeout=request.timeout or self._timeout) as stream:
+                from agenttree.providers.traffic_failure import safe_headers
+                traffic_headers = safe_headers(getattr(stream, "headers", None))
                 for raw_line in stream:
                     check_execution()
                     received += len(raw_line)
@@ -333,7 +358,8 @@ class OpenAICompatibleProvider(BaseProvider):
             raise MalformedProviderResponseError("Provider tool call is incomplete")
         yield ProviderStreamChunk(response=ProviderResponse(
             content="".join(content).strip(), provider=self.name, model=model_name,
-            usage=usage, finish_reason=finish_reason, tool_calls=tool_calls))
+            usage=usage, finish_reason=finish_reason, tool_calls=tool_calls,
+            metadata={"traffic_headers": traffic_headers}))
 
     def list_models(self, *, refresh: bool = False) -> tuple[ProviderModel, ...]:
         if not self._model_discovery:

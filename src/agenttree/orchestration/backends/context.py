@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import replace
 from typing import Any, Callable
 
-from agenttree.agents import RootAgent
+from agenttree.agents import ManagerAgent, RootAgent
 from agenttree.config import AgentTreeConfig
 from agenttree.core import (
     BaseFinalReviewer, BaseManagerReviewer, BaseSpecialistExecutor,
@@ -12,7 +12,7 @@ from agenttree.core import (
     BaseRootPlanner, BaseRootSynthesizer,
 )
 from agenttree.models import (
-    ExecutionEvent, ReviewDecision, ReviewResult, Task, WorkflowPhase, WorkflowState,
+    ExecutionEvent, ExecutionMode, ReviewDecision, ReviewResult, Task, WorkflowPhase, WorkflowState,
 )
 from agenttree.orchestration.engine import OrchestrationEngine
 from agenttree.orchestration.models import FinalResult, FinalStatus
@@ -101,7 +101,8 @@ class OrchestrationContext:
     def _event(self, event_type: ExecutionEventType, trace=None) -> None:
         target = trace if trace is not None else self._last_state.trace.clone()
         target.append(ExecutionEvent(task_id=self.task.id, event_type=event_type.value,
-                                     actor_id=self._root.id))
+                                     actor_id=self._root.id,
+                                     metadata={"execution_mode": self.task.execution_mode.value}))
         if trace is None:
             self._record(trace=target)
 
@@ -153,6 +154,13 @@ class OrchestrationContext:
         """Run combined triage/planning and preserve the no-manager outcome."""
         working = self.task
         self._enter(WorkflowPhase.TRIAGE)
+        if working.execution_mode is ExecutionMode.DEEP and not any(
+            isinstance(agent, ManagerAgent) and agent.specialists
+            for agent in self._agents.agents
+        ):
+            self._event(ExecutionEventType.RUN_STARTED)
+            self._early_failure("Deep execution requires a Manager with a Specialist")
+            return
         if self._root_planner is not None:
             self._event(ExecutionEventType.RUN_STARTED)
             self._event(ExecutionEventType.ROOT_PLANNING_STARTED)
@@ -167,7 +175,15 @@ class OrchestrationContext:
             if not isinstance(plan_choice, RootPlan):
                 raise TypeError("Root planner must return RootPlan")
             self._event(ExecutionEventType.ROOT_PLANNING_COMPLETED)
-            if not plan_choice.delegate:
+            if not plan_choice.delegate and working.execution_mode is ExecutionMode.DEEP:
+                trace = self._last_state.trace.clone()
+                trace.append(ExecutionEvent(
+                    task_id=working.id, actor_id=self._root.id,
+                    event_type="root.delegation.required",
+                    metadata={"execution_mode": "deep", "reason": "hierarchy_required"},
+                ))
+                self._record(trace=trace)
+            if not plan_choice.delegate and working.execution_mode is ExecutionMode.FAST:
                 if journal is not None:
                     journal.run(journal.child_key("root:direct_response"), "root.direct_response",
                                 (working.id, plan_choice.direct_output),
@@ -202,6 +218,10 @@ class OrchestrationContext:
                 trace.append(event)
             from dataclasses import replace as replace_plan
             plan = replace_plan(plan, trace=trace)
+        # Annotate the existing start event, including planner-less backends.
+        for event in plan.trace.events:
+            if event.event_type == ExecutionEventType.RUN_STARTED.value:
+                event.metadata["execution_mode"] = working.execution_mode.value
         self._record(triage_result=plan.triage_result, trace=plan.trace)
         self._enter(WorkflowPhase.PLANNING, result=plan)
         from agenttree.core.collaboration import _active_collaboration_session

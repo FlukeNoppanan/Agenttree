@@ -87,7 +87,7 @@ def test_malformed_review_is_repaired_once_and_emits_safe_events():
     assert result.decision is ReviewDecision.PASS
     assert len(provider.requests) == 2
     assert provider.requests[1].context["structured_decision_repair"] == {
-        "attempt": 1, "rejected_response_class": "malformed_syntax",
+        "attempt": 1, "rejected_response_class": "malformed_syntax", "reason_code": "malformed_json",
     }
     events = structured_events(store)
     assert [e.event_type for e in events] == [
@@ -95,6 +95,7 @@ def test_malformed_review_is_repaired_once_and_emits_safe_events():
         "structured_decision.validation_failed",
         "structured_decision.repair.started",
         "structured_decision.decision_attempt",
+        "structured_decision.normalized",
         "structured_decision.repair.succeeded",
     ]
     assert events[1].metadata["failure_class"] == "malformed_syntax"

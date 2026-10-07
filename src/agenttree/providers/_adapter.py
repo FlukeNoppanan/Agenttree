@@ -82,6 +82,8 @@ def _redact_raw(value: Any) -> Any:
                  "reasoning", "reasoning_content", "thinking", "thoughts",
                  "chain_of_thought"}
     if isinstance(value, dict):
+        if value.get("thought") is True or value.get("type") in {"reasoning", "thinking", "analysis"}:
+            return {"reasoning_present": True}
         return {key: _redact_raw(item) for key, item in value.items()
                 if isinstance(key, str) and key.casefold() not in forbidden}
     if isinstance(value, list):
@@ -89,8 +91,50 @@ def _redact_raw(value: Any) -> Any:
     return deepcopy(value)
 
 
+
+def final_content(value: Any, *, depth: int = 0) -> str | dict | None:
+    """Extract only explicit answer parts, never hidden reasoning or SDK trees.
+
+    Vendor adapters choose their answer field first. This helper accepts common
+    text/content/parts carriers inside that field; unrelated metadata is ignored.
+    Multiple text parts concatenate in order. Native objects remain structured.
+    """
+    if depth > 8:
+        raise MalformedProviderResponseError("Answer content nesting exceeds limit")
+    if isinstance(value, str) or value is None:
+        return value
+    if isinstance(value, list):
+        if len(value) > 1024:
+            raise MalformedProviderResponseError("Answer content exceeds part limit")
+        parts = [final_content(item, depth=depth + 1) for item in value]
+        if any(isinstance(item, dict) for item in parts):
+            raise MalformedProviderResponseError("Ambiguous structured answer parts")
+        return "".join(item or "" for item in parts)
+    if isinstance(value, dict):
+        if value.get("thought") is True or value.get("type") in {
+            "reasoning", "thinking", "analysis", "reasoning_content", "thought"}:
+            return None
+        for key in ("text", "content", "parts"):
+            if key in value:
+                return final_content(value[key], depth=depth + 1)
+        # A protocol object is an answer only when the caller explicitly passes
+        # the structured field. Do not remove/rename its canonical fields.
+        return value
+    raise MalformedProviderResponseError("Unsupported answer content representation")
+
+
 def response(content: Any, model: Any, provider: str, usage: ProviderUsage | None,
              request: ProviderRequest, raw: Any, keep_raw: bool) -> ProviderResponse:
+    content = final_content(content)
+    structured_content = None
+    if isinstance(content, dict) and request.response_format is not None:
+        try:
+            # An explicit structured field supplied by the adapter, not raw SDK data.
+            content_text = json.dumps(content, allow_nan=False, ensure_ascii=False)
+        except (TypeError, ValueError, RecursionError) as error:
+            raise MalformedProviderResponseError("Invalid native structured content") from error
+        structured_content = json.loads(content_text)
+        content = content_text
     if not isinstance(content, str) or not content.strip():
         raise MalformedProviderResponseError("Provider returned no normalized text content")
     if not isinstance(model, str) or not model:
@@ -107,6 +151,7 @@ def response(content: Any, model: Any, provider: str, usage: ProviderUsage | Non
     return ProviderResponse(
         content=content, model=model, provider=provider, usage=usage,
         metadata={"request_metadata": deepcopy(request.metadata)}, raw_response=raw_data,
+        structured_content=structured_content,
     )
 
 
